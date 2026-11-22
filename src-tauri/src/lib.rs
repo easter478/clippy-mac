@@ -14,7 +14,7 @@ use integrations::Integ;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -52,8 +52,12 @@ pub struct Settings {
     pub ignores: BTreeMap<String, u32>,
     pub sleep_minutes: u32,
     pub buddy: bool,
-    pub deck_mode: String, // always | click | never
+    pub deck_mode: String, // always | never (1.1's "click" became never + click_opens deck)
+    pub click_opens: String, // what a click on Clippy opens: chat | deck
+    pub click_hides_chat: bool, // clicking Clippy while the chat is open hides it
     pub deck_collapsed: bool,
+    /// close the Deck after any tile (it comes back with the next click on Clippy)
+    pub deck_autoclose: bool,
     pub buddy_pos: Option<(f64, f64)>,
     pub size: String,
     pub integrations: BTreeMap<String, Integ>,
@@ -63,7 +67,7 @@ pub struct Settings {
     pub mirror_to_screen: bool,
 }
 
-pub const KINDS: &[&str] = &["homelab", "downloads", "media", "stocks", "tips", "health"];
+pub const KINDS: &[&str] = &["homelab", "downloads", "media", "stocks", "tips", "health", "snaps"];
 
 impl Default for Settings {
     fn default() -> Self {
@@ -81,7 +85,10 @@ impl Default for Settings {
             sleep_minutes: 5,
             buddy: true,
             deck_mode: "always".into(),
+            click_opens: "chat".into(),
+            click_hides_chat: true,
             deck_collapsed: false,
+            deck_autoclose: true,
             buddy_pos: None,
             size: "medium".into(),
             integrations: BTreeMap::new(),
@@ -113,6 +120,10 @@ pub struct AppState {
     deck_h: Mutex<f64>,
     /// "Open Settings" was asked for; the chat page reads and clears it when it loads.
     want_settings: AtomicBool,
+    /// When Clippy last wrote to the clipboard itself.
+    self_copy: Mutex<Option<std::time::Instant>>,
+    /// Integrations' live answers for the chat, briefly reused: name -> (when, text).
+    pub live_cache: Mutex<HashMap<String, (std::time::Instant, String)>>,
 }
 
 struct MenuRefs {
@@ -149,6 +160,10 @@ fn load_settings() -> Settings {
         if raw["deck"] == false {
             s.deck_mode = "never".into();
         }
+    }
+    if s.deck_mode == "click" {
+        s.deck_mode = "never".into();
+        s.click_opens = "deck".into();
     }
     for k in KINDS {
         s.kinds.entry(k.to_string()).or_insert(true);
@@ -223,7 +238,7 @@ fn apply_settings(app: &AppHandle, state: &AppState) {
         let _ = if s.buddy { w.show() } else { w.hide() };
     }
     if let Some(w) = app.get_webview_window("deck") {
-        let show = s.deck_mode == "always" || (s.deck_mode == "click" && state.deck_open.load(Ordering::Relaxed));
+        let show = s.deck_mode == "always" || state.deck_open.load(Ordering::Relaxed);
         if show {
             place_deck(&w, s.deck_collapsed && s.deck_mode == "always");
             let _ = w.show();
@@ -256,7 +271,25 @@ fn work_area(w: &WebviewWindow) -> (f64, f64, f64, f64) {
 
 fn place_deck(w: &WebviewWindow, collapsed: bool) {
     let (x, y, aw, ah) = work_area(w);
-    let want = w.app_handle().state::<Arc<AppState>>().deck_h.lock().clamp(200.0, 900.0);
+    let state = w.app_handle().state::<Arc<AppState>>();
+    let want = state.deck_h.lock().clamp(200.0, 900.0);
+    let s = state.settings.lock().clone();
+    if s.deck_mode != "always" {
+        // opened from Clippy: attach it to him, just above his head (below him when he's near the top),
+        // centred on him and kept inside the screen
+        let (right, bottom) = s.buddy_pos.unwrap_or((x + aw - 250.0, y + ah - 8.0));
+        let cw = match s.size.as_str() { "small" => 54.0, "large" => 92.0, _ => 70.0 };
+        let (cx, top) = (right - 8.0 - cw / 2.0, bottom - 4.0 - cw * 1.6);
+        let room_above = top - y - 8.0;
+        let room_below = y + ah - bottom - 8.0;
+        let below = room_above < want.min(420.0) && room_below > room_above;
+        let h = want.min(if below { room_below } else { room_above }).max(200.0);
+        let px = (cx - DECK_W / 2.0).clamp(x + 6.0, x + aw - DECK_W - 6.0);
+        let py = if below { bottom + 2.0 } else { top - h - 2.0 };
+        let _ = w.set_size(LogicalSize::new(DECK_W, h));
+        let _ = w.set_position(LogicalPosition::new(px, py.clamp(y, (y + ah - h).max(y))));
+        return;
+    }
     let h = (ah - 80.0).min(want);
     let width = if collapsed { DECK_TAB } else { DECK_W };
     let _ = w.set_size(LogicalSize::new(width, h));
@@ -280,13 +313,13 @@ fn buddy_moved(app: AppHandle) {
     let (Ok(pos), Ok(size), Ok(sf)) = (w.outer_position(), w.outer_size(), w.scale_factor()) else { return };
     let right = (pos.x as f64 + size.width as f64) / sf;
     let bottom = (pos.y as f64 + size.height as f64) / sf;
-    update(&app, |s| s.buddy_pos = Some((right, bottom)));
+    update(&app, |s| s.buddy_pos = Some((right, bottom))); // also re-places an attached Deck
 }
 
 #[tauri::command]
 fn deck_collapse(app: AppHandle, collapsed: bool) {
     let state = app.state::<Arc<AppState>>();
-    if state.settings.lock().deck_mode == "click" {
+    if state.settings.lock().deck_mode != "always" {
         state.deck_open.store(false, Ordering::Relaxed);
         apply_settings(&app, &state);
         return;
@@ -301,6 +334,34 @@ fn deck_fit(app: AppHandle, state: tauri::State<Arc<AppState>>, height: f64) {
     if changed {
         apply_settings(&app, &state);
     }
+}
+
+/// A click on Clippy. With the chat open (and "click again to hide" on) it hides the chat and any Deck the
+/// click opened, leaving only Clippy. Otherwise it opens what Settings says: the chat, or the Deck.
+#[tauri::command]
+fn buddy_click(app: AppHandle) -> String {
+    let state = app.state::<Arc<AppState>>();
+    let s = state.settings.lock().clone();
+    let chat_open = app.get_webview_window("chat").map(|w| w.is_visible().unwrap_or(false)).unwrap_or(false);
+    if chat_open && s.click_hides_chat {
+        if let Some(w) = app.get_webview_window("chat") {
+            let _ = w.hide();
+        }
+        if s.deck_mode != "always" && state.deck_open.swap(false, Ordering::Relaxed) {
+            apply_settings(&app, &state);
+        }
+        return "hid".into();
+    }
+    if s.click_opens == "deck" {
+        if s.deck_mode == "always" {
+            update(&app, |x| x.deck_collapsed = !x.deck_collapsed);
+        } else {
+            deck_toggle(app.clone());
+        }
+        return "deck".into();
+    }
+    show_window(app.clone(), "chat".into());
+    "chat".into()
 }
 
 /// "Show the Deck when I click Clippy" mode: each click on Clippy opens or closes it.
@@ -340,6 +401,13 @@ fn show_window(app: AppHandle, which: String) {
     match which.as_str() {
         // Settings is a page inside the chat window, so it can never open behind other windows
         "settings" | "chat" => {
+            {
+                // the chat doesn't need the Deck: close one Clippy opened
+                let state = app.state::<Arc<AppState>>();
+                if state.settings.lock().deck_mode != "always" && state.deck_open.swap(false, Ordering::Relaxed) {
+                    apply_settings(&app, &state);
+                }
+            }
             if let Some(w) = app.get_webview_window("chat") {
                 if !w.is_visible().unwrap_or(false) {
                     // open the chat just left of Clippy, inside the screen
@@ -371,11 +439,10 @@ fn show_window(app: AppHandle, which: String) {
         "deck" => {
             let state = app.state::<Arc<AppState>>();
             state.deck_open.store(true, Ordering::Relaxed);
-            let mode = state.settings.lock().deck_mode.clone();
-            if mode == "never" {
-                update(&app, |s| s.deck_mode = "always".into());
-            } else {
+            if state.settings.lock().deck_mode == "always" {
                 update(&app, |s| s.deck_collapsed = false);
+            } else {
+                apply_settings(&app, &state); // shows it until it's closed again
             }
         }
         _ => {}
@@ -501,6 +568,7 @@ async fn custom_run(app: AppHandle, state: tauri::State<'_, Arc<AppState>>, inde
     let a = custom_action(index)?;
     let r = custom::run(&state.http, &a, input.as_deref().unwrap_or("").trim(), file.as_deref()).await?;
     if let Some(c) = r["copy"].as_str().filter(|c| !c.is_empty()) {
+        *app.state::<Arc<AppState>>().self_copy.lock() = Some(std::time::Instant::now());
         let _ = app.clipboard().write_text(c.to_string());
     }
     Ok(r)
@@ -695,9 +763,14 @@ async fn chat_send(state: tauri::State<'_, Arc<AppState>>, messages: Vec<Msg>, o
     if let Some((title, url)) = &prep.source {
         let _ = on_event.send(json!({"kind": "source", "title": title, "url": url}));
     }
+    // the fresh data goes with the question (the chat window keeps only what the user typed)
+    let mut msgs = msgs;
+    if let Some(last) = msgs.iter_mut().rev().find(|m| m.role == "user") {
+        last.content = assist::with_live(&question, &prep.context);
+    }
     let req = GenReq {
         key: Key { path: PathBuf::from(&s.model), n_ctx: s.ctx },
-        system: system_prompt(&s, &st.context.lock(), &prep.context),
+        system: system_prompt(&s, &st.context.lock(), ""),
         messages: msgs,
         temperature: if s.personality == "sarcastic" { 0.85 } else { 0.7 },
         max_tokens: 1500,
@@ -780,6 +853,7 @@ fn request_key_access() -> String {
 
 #[tauri::command]
 fn copy_text(app: AppHandle, text: String) -> Result<(), String> {
+    *app.state::<Arc<AppState>>().self_copy.lock() = Some(std::time::Instant::now());
     app.clipboard().write_text(text).map_err(|e| e.to_string())
 }
 
@@ -810,6 +884,10 @@ fn start_helper(app: AppHandle) {
         if let Some(out) = child.stdout.take() {
             for line in BufReader::new(out).lines().map_while(Result::ok) {
                 if let Ok(v) = serde_json::from_str::<Value>(&line) {
+                    // Clippy's own Copy buttons shouldn't make him comment on "your" copy
+                    if v["t"] == "clip" && state.self_copy.lock().map(|t| t.elapsed() < Duration::from_secs(3)).unwrap_or(false) {
+                        continue;
+                    }
                     let _ = app.emit_to("buddy", "helper", v);
                 }
             }
@@ -887,6 +965,8 @@ fn make_state(notify: engine::Notify) -> Arc<AppState> {
         deck_open: AtomicBool::new(false),
         deck_h: Mutex::new(560.0),
         want_settings: AtomicBool::new(false),
+        self_copy: Mutex::new(None),
+        live_cache: Mutex::new(HashMap::new()),
     })
 }
 
@@ -918,7 +998,7 @@ pub fn run() {
             get_settings, save_settings, buddy_fit, buddy_moved, deck_collapse, deck_toggle, deck_fit, show_window, hide_window, set_tray_title, quit,
             integ, secrets_status, secret_set, check_services,
             custom_list, custom_run, custom_watch, custom_import, custom_example, reveal_data,
-            models_info, model_download, model_cancel, model_add, model_remove, model_unload, set_context, chat_send, chat_stop, test_ask, take_want_settings,
+            models_info, model_download, model_cancel, model_add, model_remove, model_unload, set_context, chat_send, chat_stop, test_ask, take_want_settings, buddy_click,
             mac_health, request_key_access, copy_text, paste_text, open_url
         ])
         .setup(move |app| {

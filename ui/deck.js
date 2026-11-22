@@ -20,6 +20,8 @@ function paint() {
       if (!S.buddy) await invoke('show_window', { which: 'buddy' });
       b.classList.add('busy'); setTimeout(() => b.classList.remove('busy'), 600);
       emit('tile', { id: t.id, index: t.index });
+      // the Deck's job is done: close it (a click on Clippy brings it back)
+      if (S.deck_autoclose !== false) setTimeout(() => invoke(S.deck_mode === 'always' ? 'deck_collapse' : 'hide_window', S.deck_mode === 'always' ? { collapsed: true } : { which: 'deck' }), 150);
     };
   });
   document.body.classList.toggle('collapsed', !!S.deck_collapsed && S.deck_mode === 'always');

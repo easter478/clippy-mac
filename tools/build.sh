@@ -32,6 +32,11 @@ codesign --verify --deep --strict "$APP" && echo "signed: $APP ($ID)"
 # Installer: a compressed disk image with Clippy and a shortcut to Applications.
 STAGE=$(mktemp -d)
 cp -R "$APP" "$STAGE/"
+# the copy in the DMG is signed with CLIPPY_DMG_SIGN_ID (a Developer ID if you have one), else ad hoc,
+# so a personal local certificate never ends up inside a public download
+DID="${CLIPPY_DMG_SIGN_ID:--}"
+codesign --force -s "$DID" "$STAGE/Clippy.app/Contents/MacOS/clippy-helper"
+codesign --force -s "$DID" "$STAGE/Clippy.app"
 ln -s /Applications "$STAGE/Applications"
 cat > "$STAGE/First open - read me.txt" <<TXT
 Drag Clippy into Applications, then open it from there.
@@ -46,7 +51,7 @@ DMG="dist/Clippy-$VERSION.dmg"
 rm -f "$DMG"
 hdiutil create -volname "Clippy $VERSION" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGE"
-codesign --force -s "$ID" "$DMG" 2>/dev/null || true
+codesign --force -s "$DID" "$DMG" 2>/dev/null || true
 echo "installer: $DMG ($(du -h "$DMG" | cut -f1))"
 
 [[ -x personal/after-build.sh ]] && personal/after-build.sh || true

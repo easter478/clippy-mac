@@ -14,7 +14,8 @@ use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 
 pub fn main(args: &[String]) -> i32 {
-    crate::secrets::TEST_MODE.store(true, std::sync::atomic::Ordering::Relaxed);
+    // CLIPPY_KEYCHAIN=1 reads the real Keychain (to check a real setup); otherwise secrets come only from CLIPPY_SECRET_*
+    crate::secrets::TEST_MODE.store(std::env::var("CLIPPY_KEYCHAIN").as_deref() != Ok("1"), std::sync::atomic::Ordering::Relaxed);
     let rt = tokio::runtime::Runtime::new().expect("runtime");
     let arg = |i: usize| args.get(i).cloned().unwrap_or_default();
     match args.first().map(String::as_str) {
@@ -41,6 +42,13 @@ pub fn main(args: &[String]) -> i32 {
         Some("--chat") => {
             let st = new_state();
             // CLIPPY_HA_URL points the chat at a (mock) Home Assistant; its token is CLIPPY_SECRET_HOME_ASSISTANT
+            // CLIPPY_INTEGS='{"proxmox":{"on":true,"url":…,"user":…}, …}' sets up any integrations for a test
+            if let Ok(m) = std::env::var("CLIPPY_INTEGS").map(|j| serde_json::from_str::<std::collections::HashMap<String, integrations::Integ>>(&j)) {
+                match m {
+                    Ok(m) => st.settings.lock().integrations.extend(m),
+                    Err(e) => eprintln!("CLIPPY_INTEGS isn't valid: {e}"),
+                }
+            }
             if let Ok(u) = std::env::var("CLIPPY_HA_URL") {
                 st.settings.lock().integrations.insert("home_assistant".into(), integrations::Integ { on: true, url: u, ..Default::default() });
             }
@@ -56,8 +64,8 @@ pub fn main(args: &[String]) -> i32 {
             let (tx, rx) = std::sync::mpsc::channel();
             let req = GenReq {
                 key: Key { path: PathBuf::from(arg(1)), n_ctx: 4096 },
-                system: system_prompt(&s, "", &prep.context),
-                messages: vec![Msg { role: "user".into(), content: arg(2) }],
+                system: system_prompt(&s, "", ""),
+                messages: vec![Msg { role: "user".into(), content: assist::with_live(&arg(2), &prep.context) }],
                 temperature: if s.personality == "sarcastic" { 0.85 } else { 0.7 },
                 max_tokens: 400,
             };

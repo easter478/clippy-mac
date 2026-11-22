@@ -10,13 +10,17 @@ It's an original character and isn't affiliated with Microsoft.
 - **Two personalities.** *Nice*, or *Rude*: sarcastic, mildly sweary, never mean.
 - **Homelab and home integrations.** Each one is optional: Home Assistant lights, Proxmox, Portainer, Pi-hole, Jellyfin, Radarr, Sonarr, qBittorrent, stocks, weather, plain "is it up?" checks, and a Lian Li screen.
 - **Custom actions.** Add your own Deck tiles that call any HTTP service, using a JSON file. Secrets stay in the Keychain.
+- **Comments on your screenshots and copies.** Take a screenshot or copy something and Clippy has a remark ready (properly sarcastic in Rude mode). He only sees *that* something was copied, never what. Turn it off under Messages → Screenshots and copies.
 - **Stays quiet.** Each kind of message has its own on/off switch. A kind goes quiet after two "Not now"s, and Clippy naps while you're away.
 
 ## Install
 
-1. Download `Clippy-<version>.dmg`, open it and drag **Clippy** into **Applications**.
+1. Download the latest `Clippy-<version>.dmg` from [Releases](https://github.com/easter478/clippy-mac/releases/latest) (the same file is also in the [`releases/`](releases/) folder), open it and drag **Clippy** into **Applications**.
 2. The app isn't notarised by Apple, so the first time: right-click Clippy in Applications → **Open** (or System Settings → Privacy & Security → **Open Anyway**).
-3. Clippy appears on the desktop and as a paperclip in the menu bar. Click him to chat. Settings (⚙, or ⌘,) and the Deck's tiles (the grid button) are both inside the chat window.
+3. Clippy appears on the desktop and as a paperclip in the menu bar. Click him to chat; click him again to hide the chat. Settings (⚙, or ⌘,) and the Deck's tiles (the grid button) are both inside the chat window.
+   - Settings → General → **Clicking Clippy opens** chooses whether a click opens the Chat or the Deck (the Deck has a Chat tile).
+   - **Click Clippy again to hide the chat** can be turned off.
+   - The Deck opens attached to Clippy (just above him, or below him near the top of the screen) and closes once you pick a tile or open the chat. Turn off **Close the Deck after a tile** to keep it open.
 
 macOS may ask you for these:
 
@@ -65,7 +69,7 @@ Turn each one on in Settings → Integrations, then press **Test**. Tokens and p
 
 Self-signed HTTPS (common for Proxmox, Portainer and Pi-hole) works once you tick **Self-signed HTTPS certificate** for that integration.
 
-Clippy reads your integrations into the chat as context, so you can ask "is my homelab OK?" and get a real answer. It's told never to make numbers up.
+Every chat message reads all the integrations you've turned on, live and in parallel (reused for 45 seconds), so you can ask "what's downloading?", "is my homelab OK?" or "how is NVDA doing?" and get the real numbers from your own services. A service that doesn't answer is reported as unreachable; the model is told never to make numbers up. Read-only calls retry once if the connection drops.
 
 ## Custom actions
 
@@ -135,11 +139,11 @@ This builds the Swift helper and the Tauri app, signs them and creates `dist/Cli
 | `src-tauri/src/engine.rs` | llama.cpp engine: Qwen chat template, streaming, KV-cache reuse, idle unload |
 | `src-tauri/src/models.rs` | Recommended models, downloads (resumable), installed list |
 | `src-tauri/src/integrations.rs` | All built-in integrations |
-| `src-tauri/src/assist.rs` | What the chat gets per question: live Home Assistant state, light actions, Wikipedia lookup |
+| `src-tauri/src/assist.rs` | What the chat gets per question: live Home Assistant state, live data from every integration, light actions, Wikipedia lookup |
 | `src-tauri/src/custom.rs` | Custom actions: templating, file streaming, job watching |
 | `src-tauri/src/secrets.rs` | Keychain storage |
 | `src-tauri/src/cli.rs` | Command-line test mode |
-| `helper/main.swift` | Sidecar for idle time, Mac health and the shortcut tips |
+| `helper/main.swift` | Sidecar for idle time, Mac health, the shortcut tips, and spotting new screenshots and copies |
 | `ui/` | Buddy, Deck and chat windows (plain HTML/JS); Settings is a page inside the chat; `tiles.js` is the tile list the Deck and the chat share |
 | `tools/mock-services.py` | Fake home services for testing integrations |
 
@@ -163,6 +167,8 @@ Clippy.app/Contents/MacOS/clippy --integ weather status '{"on":true,"extra":"Lon
 CLIPPY_SECRET_NTFY_TOPIC=my-topic Clippy.app/Contents/MacOS/clippy --custom examples/custom-actions.example.json 0 "hello"
 ```
 
+`--chat` uses the same live context as the app. Point it at services with `CLIPPY_INTEGS='{"radarr":{"on":true,"url":"http://127.0.0.1:8765"}}'` (plus `CLIPPY_SECRET_RADARR=…`) and `CLIPPY_HA_URL`.
+
 `python3 tools/mock-services.py` starts fake Home Assistant, Proxmox, Portainer, Pi-hole, Jellyfin, Radarr, Sonarr and qBittorrent services on port 8765.
 
 ## Privacy
@@ -173,4 +179,5 @@ CLIPPY_SECRET_NTFY_TOPIC=my-topic Clippy.app/Contents/MacOS/clippy --custom exam
   - stocks (Yahoo Finance) and weather (Open-Meteo), and only if you turn them on;
   - whatever services you configure yourself.
 - The chat history is stored only in the chat window's local storage on your Mac. **New chat** clears it.
-- There's no clipboard watching, analytics or telemetry.
+- Clippy notices *that* you copied something or took a screenshot (to make a remark), but never reads what you copied or the screenshot itself. Turn it off under Messages → Screenshots and copies.
+- There's no analytics or telemetry.

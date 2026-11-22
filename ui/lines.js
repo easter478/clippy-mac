@@ -2,6 +2,10 @@
 // personality (Settings → Personality). {name} in a line is replaced by vars.name (already HTML-safe).
 const LINES = {
   normal: {
+    shot: ["Nice screenshot! It's saved where your screenshots go.", "Screenshot saved. Tip: ⌘⇧5 gives you more options, like timers and recording.", "Got it, screenshot taken."],
+    shot_video: ["Screen recording saved. Nice!", "Your recording is saved. ⌘⇧5 has the recording controls."],
+    clip: ["Copied! Press ⌘V to paste it.", "On the clipboard. ⌘V when you're ready.", "Copied. Paste it with ⌘V."],
+    clip_image: ["Screenshot copied. Press ⌘V to paste it.", "Picture's on the clipboard. ⌘V to paste."],
     hello_first: ["Hi! I'm Clippy. Click me to chat, or use the <b>Deck</b> on the right for quick actions. Drag me anywhere; right-click me for options."],
     hello_again: ["Hi again! I'm here if you need me.", "Back on duty. Click me if you need anything."],
     greet: ["Need anything? Click <b>Chat</b> to ask me something.", "Tip: right-click me for options. Drag me anywhere you like.",
@@ -42,6 +46,13 @@ const LINES = {
     nothing_on: ["Turn on an integration in Settings and I'll show it here."],
   },
   sarcastic: {
+    shot: ["Oh look, another screenshot. Building evidence against someone, are we?", "Click. Saved. Another masterpiece for your Desktop junk drawer.",
+      "A screenshot? Bold of you to think you'll ever look at it again.", "Screenshot taken. Your Desktop is now 2% messier. Proud of you.",
+      "Snap! Bug report or gossip? Don't answer, I don't want to know.", "Another damn screenshot. Your Desktop called; it wants a cleaner."],
+    shot_video: ["Recording your screen? Smile. And maybe close those 400 tabs first.", "Screen recording saved. Oscar-worthy clicking, truly."],
+    clip: ["Copied. Riveting. Now go paste it somewhere useful.", "⌘C, huh? Look at you, a real power user.", "Copied something. I didn't look. I don't care. Mostly.",
+      "Ooh, copy-paste. The backbone of modern engineering.", "Copied. Try not to paste it into the wrong chat this time.", "Copy, copy, copy. Do you ever write anything yourself, damn it?"],
+    clip_image: ["Screenshot straight to the clipboard. Fancy. Now actually paste it somewhere.", "A picture on the clipboard. Hope it's not a cat meme again. Who am I kidding."],
     hello_first: ["Oh great, a new owner. I'm Clippy. Click me to chat, poke the <b>Deck</b> for buttons, drag me wherever. Try not to break anything."],
     hello_again: ["Oh, you're back. Wonderful. Truly.", "Back again? Fine. I'm here. Sigh.", "Look who decided to turn the Mac on."],
     greet: ["What now? Click <b>Chat</b> if you've got an actual question.", "Yes, I'm a paperclip with eyes. Right-click me if you need options, genius.",

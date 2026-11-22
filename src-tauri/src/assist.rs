@@ -217,6 +217,121 @@ pub async fn switch_lights(st: &AppState, on: bool, ids: &[String], before: &[Va
     out.join("\n")
 }
 
+fn f1(v: &Value) -> String {
+    v.as_f64().map(|x| format!("{x:.0}")).unwrap_or_else(|| "?".into())
+}
+fn strs(v: &Value, key: &str, n: usize) -> Vec<String> {
+    v.as_array().cloned().unwrap_or_default().iter().take(n).map(|x| x[key].as_str().unwrap_or("").to_string()).filter(|s| !s.is_empty()).collect()
+}
+fn wmo(code: i64) -> &'static str {
+    match code {
+        0 => "clear", 1 | 2 => "partly cloudy", 3 => "overcast", 45 | 48 => "fog", 51..=57 => "drizzle", 61..=67 => "rain",
+        71..=77 => "snow", 80..=82 => "showers", 85 | 86 => "snow showers", 95..=99 => "thunderstorms", _ => "mixed",
+    }
+}
+
+/// One integration's live answer as a line or two for the model.
+pub fn live_text(name: &str, v: &Value) -> String {
+    match name {
+        "proxmox" => {
+            let nodes: Vec<String> = v["nodes"].as_array().cloned().unwrap_or_default().iter().map(|n| format!("{} {} (CPU {}%, memory {}%)",
+                n["name"].as_str().unwrap_or(""), if n["online"] == true { "online" } else { "OFFLINE" }, f1(&n["cpu"]), f1(&n["mem"]))).collect();
+            let g = v["guests"].as_array().cloned().unwrap_or_default();
+            let run: Vec<String> = g.iter().filter(|x| x["running"] == true).map(|x| x["name"].as_str().unwrap_or("").to_string()).collect();
+            let stop: Vec<String> = g.iter().filter(|x| x["running"] != true).map(|x| x["name"].as_str().unwrap_or("").to_string()).collect();
+            // separate labelled lines: small models mix one list into the other otherwise
+            let mut out = format!("Proxmox host: {}.\nProxmox guests RUNNING now ({} of {}): {}.", nodes.join("; "), run.len(), g.len(),
+                if run.is_empty() { "none".to_string() } else { run.join(", ") });
+            if !stop.is_empty() {
+                out += &format!("\nProxmox guests STOPPED ({}): {}.", stop.len(), stop.join(", "));
+            }
+            out
+        }
+        "portainer" => {
+            let c = v["containers"].as_array().cloned().unwrap_or_default();
+            let bad: Vec<String> = c.iter().filter(|x| x["state"] != "running" || x["unhealthy"] == true)
+                .map(|x| format!("{} ({})", x["name"].as_str().unwrap_or(""), x["status"].as_str().unwrap_or(""))).collect();
+            let ok: Vec<String> = c.iter().filter(|x| x["state"] == "running" && x["unhealthy"] != true).map(|x| x["name"].as_str().unwrap_or("").to_string()).collect();
+            // a long list of healthy names only crowds out the facts; name them only when there are few
+            let fine = if ok.len() <= 12 { format!(" ({})", ok.join(", ")) } else { String::new() };
+            format!("Docker containers (Portainer): {} in total, {} running fine{}.{}", c.len(), ok.len(), fine,
+                if bad.is_empty() { " No problems.".to_string() } else { format!(" PROBLEMS: {}.", bad.join(", ")) })
+        }
+        "pihole" => format!("Pi-hole: blocking {}; today {} queries, {} blocked ({}%); {} domains on the blocklist.",
+            v["blocking"].as_str().unwrap_or("?"), f1(&v["total"]), f1(&v["blocked"]),
+            v["percent"].as_f64().map(|x| format!("{x:.1}")).unwrap_or("?".into()), f1(&v["domains"])),
+        "jellyfin" => {
+            let playing: Vec<String> = v["playing"].as_array().cloned().unwrap_or_default().iter().map(|p| format!("{} ({}{} on {})",
+                p["title"].as_str().unwrap_or(""), p["user"].as_str().unwrap_or(""), if p["paused"] == true { ", paused" } else { "" }, p["device"].as_str().unwrap_or(""))).collect();
+            format!("Jellyfin: {}; newest added: {}.", if playing.is_empty() { "nothing playing".into() } else { format!("playing {}", playing.join(", ")) },
+                strs(&v["latest"], "title", 8).join(", "))
+        }
+        "radarr" | "sonarr" => {
+            let q: Vec<String> = v["queue"].as_array().cloned().unwrap_or_default().iter().take(8).map(|x| format!("{} {}%{}", x["title"].as_str().unwrap_or(""),
+                f1(&x["progress"]), x["timeleft"].as_str().map(|t| format!(" ({t} left)")).unwrap_or_default())).collect();
+            let up: Vec<String> = v["upcoming"].as_array().cloned().unwrap_or_default().iter().take(8).map(|x| format!("{} {}", x["title"].as_str().unwrap_or(""), x["date"].as_str().unwrap_or(""))).collect();
+            format!("{}: downloading: {}; coming up: {}; recently imported: {}.", if name == "radarr" { "Radarr (movies)" } else { "Sonarr (TV)" },
+                if q.is_empty() { "nothing".into() } else { q.join(", ") }, if up.is_empty() { "nothing this week".into() } else { up.join(", ") },
+                { let i = strs(&v["imported"], "title", 6); if i.is_empty() { "nothing".into() } else { i.join(", ") } })
+        }
+        "qbittorrent" => {
+            let t = v["torrents"].as_array().cloned().unwrap_or_default();
+            let dl: Vec<String> = t.iter().filter(|x| x["progress"].as_f64().unwrap_or(0.0) < 100.0).take(10).map(|x| {
+                let sp = x["dlspeed"].as_f64().unwrap_or(0.0) / 1e6;
+                format!("{} {}% ({}{})", x["name"].as_str().unwrap_or(""), f1(&x["progress"]), x["state"].as_str().unwrap_or(""), if sp > 0.05 { format!(", {sp:.1} MB/s") } else { String::new() })
+            }).collect();
+            let done = t.iter().filter(|x| x["progress"].as_f64().unwrap_or(0.0) >= 100.0).count();
+            format!("qBittorrent: {} torrents, {} finished; downloading: {}.", t.len(), done, if dl.is_empty() { "nothing".into() } else { dl.join(", ") })
+        }
+        "stocks" => {
+            let q: Vec<String> = v["quotes"].as_array().cloned().unwrap_or_default().iter().map(|x| match x["error"].as_str() {
+                Some(e) => format!("{} ({e})", x["symbol"].as_str().unwrap_or("")),
+                None => format!("{} {} {:.2} {} ({:+.1}% today)", x["symbol"].as_str().unwrap_or(""), x["name"].as_str().unwrap_or(""),
+                    x["price"].as_f64().unwrap_or(0.0), x["currency"].as_str().unwrap_or(""), x["change"].as_f64().unwrap_or(0.0)),
+            }).collect();
+            format!("Stocks: {}.", q.join("; "))
+        }
+        "weather" => {
+            let c = &v["current"];
+            let d = &v["daily"];
+            let u = v["units"]["temperature_2m"].as_str().unwrap_or("°");
+            let day = |i: usize| format!("{}–{}{u}, {}, rain chance {}%", f1(&d["temperature_2m_min"][i]), f1(&d["temperature_2m_max"][i]),
+                wmo(d["weather_code"][i].as_i64().unwrap_or(-1)), f1(&d["precipitation_probability_max"][i]));
+            format!("Weather in {} now: {}{u}, {}. Today {}; tomorrow {}.", v["town"].as_str().unwrap_or(""), f1(&c["temperature_2m"]),
+                wmo(c["weather_code"].as_i64().unwrap_or(-1)), day(0), day(1))
+        }
+        "lianli" => {
+            let ev: Vec<String> = v["events"].as_array().cloned().unwrap_or_default().iter().filter(|e| e["level"] != "info").take(8)
+                .map(|e| e["text"].as_str().unwrap_or("").to_string()).collect();
+            if ev.is_empty() { "Homelab alerts (Lian Li screen container): none right now.".into() } else { format!("Homelab alerts (Lian Li screen container): {}.", ev.join("; ")) }
+        }
+        _ => String::new(),
+    }
+}
+
+/// Every turned-on integration, read live (in parallel, each answer reused for 45 s).
+pub async fn live_all(st: &AppState) -> Vec<String> {
+    let s = st.settings.lock().clone();
+    let names: Vec<&str> = ["proxmox", "portainer", "pihole", "jellyfin", "radarr", "sonarr", "qbittorrent", "stocks", "weather", "lianli"]
+        .into_iter().filter(|n| s.integrations.get(*n).map(|i| i.on).unwrap_or(false)).collect();
+    let jobs = names.into_iter().map(|n| async move {
+        if let Some((t, txt)) = st.live_cache.lock().get(n).cloned() {
+            if t.elapsed() < Duration::from_secs(45) {
+                return txt;
+            }
+        }
+        let action = if n == "lianli" { "feed" } else { "status" };
+        let txt = match tokio::time::timeout(Duration::from_secs(7), integrations::call(st, n, action, &json!({}))).await {
+            Ok(Ok(v)) => live_text(n, &v),
+            Ok(Err(e)) => format!("{}: couldn't read it just now ({e}).", integrations::label(n)),
+            Err(_) => format!("{}: didn't answer in time.", integrations::label(n)),
+        };
+        st.live_cache.lock().insert(n.to_string(), (std::time::Instant::now(), txt.clone()));
+        txt
+    });
+    futures_util::future::join_all(jobs).await.into_iter().filter(|t| !t.is_empty()).collect()
+}
+
 /// Is this a general-knowledge question worth a Wikipedia lookup? Returns what to search for.
 pub fn lookup_query(q: &str) -> Option<String> {
     let low = format!(" {} ", q.to_lowercase().replace(['?', '!', '"', '“', '”'], " "));
@@ -284,6 +399,15 @@ pub async fn wikipedia(http: &reqwest::Client, q: &str) -> Option<(String, Strin
 }
 
 /// Everything extra for this question. `status` reports what's being fetched ("Looking it up…").
+/// Puts the data read for this message right next to the question. In the system prompt it sits above the
+/// whole chat, and a small model then repeats its own earlier answer instead of the fresh numbers.
+pub fn with_live(question: &str, live: &str) -> String {
+    if live.trim().is_empty() {
+        return question.to_string();
+    }
+    format!("[Fresh data Clippy just read for this message. It replaces anything said earlier in this chat; answer from it and don't paste it.]\n{}\n[End of data. The user's message:]\n{}", live.trim(), question)
+}
+
 pub async fn prepare(st: &AppState, question: &str, status: impl Fn(&str)) -> Prepared {
     let s = st.settings.lock().clone();
     let mut ctx = vec![];
@@ -306,7 +430,12 @@ pub async fn prepare(st: &AppState, question: &str, status: impl Fn(&str)) -> Pr
             None => None,
         }
     };
-    let (h, w) = tokio::join!(ha, wiki);
+    let (h, w, live) = tokio::join!(ha, wiki, live_all(st));
+    if !live.is_empty() {
+        ctx.push(format!("Live from the user's services (just read; use these numbers, they beat anything older above):
+{}", live.join("
+")));
+    }
     match h {
         Some(Ok(mut v)) => {
             let lights = v["lights"].as_array().cloned().unwrap_or_default();

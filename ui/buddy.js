@@ -17,7 +17,7 @@ const st = {
   svc: {},           // service checks: fails per service
   watches: [],       // custom actions being watched
 };
-const CAT = { homelab: 'homelab alerts', downloads: 'download alerts', media: 'Jellyfin news', stocks: 'stock alerts', tips: 'Windows → Mac tips', health: 'Mac health warnings' };
+const CAT = { homelab: 'homelab alerts', downloads: 'download alerts', media: 'Jellyfin news', stocks: 'stock alerts', tips: 'Windows → Mac tips', health: 'Mac health warnings', snaps: 'screenshot and copy comments' };
 const SIZES = { small: 54, medium: 70, large: 92 };
 const on = (n) => !!S.integrations?.[n]?.on;
 
@@ -304,6 +304,15 @@ listen('helper', (e) => {
     const pretty = v.combo.split('+').map((p) => NAMES[p] || p.toUpperCase()).join('+');
     notify({ kind: 'tips', summary: null, html: L('tip', { combo: esc(pretty), app: v.app ? ' in ' + esc(v.app) : '', tip: TIPS[v.combo] }), acts: [{ label: 'Got it', primary: true, fn: hush }, later('tips')] });
   }
+  // screenshots and copies: a quick remark (at most one per screenshot every 20 s, one per copy every 3 min)
+  if (v.t === 'shot' || v.t === 'clip') {
+    const now = Date.now(), key = v.t === 'shot' ? 'lastShot' : 'lastClip';
+    if (now - (st[key] || 0) < (v.t === 'shot' ? 20000 : 180000)) return;
+    if (v.t === 'clip' && now - (st.lastShot || 0) < 5000) return; // a screenshot to the clipboard already got its remark
+    st[key] = now;
+    const line = v.t === 'shot' ? L(v.video ? 'shot_video' : 'shot') : L(v.image ? 'clip_image' : 'clip');
+    notify({ kind: 'snaps', summary: null, html: line, acts: [{ label: 'Ha', primary: true, fn: hush }, later('snaps')] });
+  }
   if (v.t === 'idle') {
     if (!st.sleeping && v.secs >= (S.sleep_minutes || 5) * 60 && !st.focusEnd) sleep();
     else if (st.sleeping && v.secs < 20) wake(false);
@@ -338,10 +347,9 @@ win.onMoved(() => { clearTimeout(moveT); moveT = setTimeout(() => invoke('buddy_
 clip.addEventListener('click', async () => {
   if (dragged) { dragged = false; return; }
   if (st.sleeping) { wake(false); if (bubble.hidden) say(L('napping')); return; }
-  if (S.deck_mode === 'click') { await invoke('deck_toggle'); hop(); return; }
   if (!bubble.hidden) { hush(); return; }
-  invoke('show_window', { which: 'chat' });
-  hop();
+  const did = await invoke('buddy_click'); // hides the chat, or opens the chat / the Deck (Settings decides)
+  if (did !== 'hid') hop();
 });
 clip.addEventListener('contextmenu', (e) => {
   e.preventDefault();

@@ -1,6 +1,6 @@
 [package]
 name = "clippy"
-version = "1.1.0"
+version = "1.2.0"
 description = "Clippy: a desktop paperclip buddy for macOS with a built-in local Qwen chat and optional homelab integrations"
 edition = "2021"
 publish = false

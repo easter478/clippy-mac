@@ -5,6 +5,9 @@
 //                                                    equivalent; letters typed on their own are never looked at)
 //       {"t":"idle","secs":12}                      seconds since the last mouse/key input, every 15 s
 //       {"t":"keys","ok":false}                     Input Monitoring is not allowed yet (tips can't work)
+//       {"t":"clip","image":true}                   something was copied (only the change count and whether it's
+//                                                    a picture are looked at, never what was copied)
+//       {"t":"shot","video":false}                  a new screenshot (or screen recording) file appeared
 //   clippy-helper health             {"cpu":…,"mem":…,"disk":…,"diskFreeGB":…,"uptimeH":…}
 //   clippy-helper keys-request       asks macOS for Input Monitoring (shows the system prompt once)
 import AppKit
@@ -104,6 +107,41 @@ func watch() {
             if keysOn { emit(["t": "keys", "ok": true]) }
         }
     }
+    // copies: the pasteboard's change counter, nothing else
+    let pb = NSPasteboard.general
+    var lastCount = pb.changeCount
+    Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { _ in
+        let c = pb.changeCount
+        if c != lastCount {
+            lastCount = c
+            let types = pb.types ?? []
+            let image = types.contains(.png) || types.contains(.tiff)
+            emit(["t": "clip", "image": image])
+        }
+    }
+    // screenshots: Spotlight marks them (kMDItemIsScreenCapture), wherever they're saved, with no folder access
+    let q = NSMetadataQuery()
+    q.predicate = NSPredicate(format: "kMDItemIsScreenCapture == 1")
+    q.searchScopes = [NSMetadataQueryLocalComputerScope]
+    var seen = Set<String>()
+    var primed = false
+    NotificationCenter.default.addObserver(forName: .NSMetadataQueryDidFinishGathering, object: q, queue: .main) { _ in
+        q.disableUpdates()
+        for case let item as NSMetadataItem in q.results { if let p = item.value(forAttribute: NSMetadataItemPathKey) as? String { seen.insert(p) } }
+        primed = true
+        q.enableUpdates()
+    }
+    NotificationCenter.default.addObserver(forName: .NSMetadataQueryDidUpdate, object: q, queue: .main) { n in
+        guard primed else { return }
+        let added = (n.userInfo?[NSMetadataQueryUpdateAddedItemsKey] as? [NSMetadataItem]) ?? []
+        for item in added {
+            guard let p = item.value(forAttribute: NSMetadataItemPathKey) as? String, !seen.contains(p) else { continue }
+            seen.insert(p)
+            let video = ["mov", "mp4"].contains((p as NSString).pathExtension.lowercased())
+            emit(["t": "shot", "video": video])
+        }
+    }
+    q.start()
     RunLoop.main.run()
 }
 

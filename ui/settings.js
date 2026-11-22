@@ -81,12 +81,17 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.targe
 $('#unload-now').onclick = async () => { await invoke('model_unload'); models(); };
 
 // ---------------- personality, Clippy, Deck ----------------
-const DECK_HELP = { always: 'Docked on the right edge of the screen. Clicking Clippy opens the chat.', click: 'Hidden until you click Clippy; click him again to hide it. Chat is a tile on the Deck.', never: 'No Deck panel. Clicking Clippy opens the chat; its tiles are behind the grid button next to ⚙ in the chat.' };
+const DECK_HELP = { always: 'Docked on the right edge of the screen.', never: 'No Deck panel unless a click on Clippy opens it. Its tiles are also behind the grid button next to ⚙ in the chat.' };
+const CLICK_HELP = { chat: 'The chat opens straight away.', deck: 'The Deck opens first; its first tile is Chat. Click Clippy again to hide it.' };
 function render() {
   PERSONALITY = S.personality;
   for (const p of ['normal', 'sarcastic']) $('#p-' + p).setAttribute('aria-pressed', String(S.personality === p));
   $('#persona-help').innerHTML = S.personality === 'sarcastic' ? `Sarcastic and cheeky, swears a little. For example: “${L('sent', { msg: 'your file is sent.' })}”` : 'Friendly and helpful.';
-  for (const d of ['always', 'click', 'never']) $('#d-' + d).setAttribute('aria-pressed', String(S.deck_mode === d));
+  for (const d of ['always', 'never']) $('#d-' + d).setAttribute('aria-pressed', String(S.deck_mode === d));
+  for (const c of ['chat', 'deck']) $('#c-' + c).setAttribute('aria-pressed', String((S.click_opens || 'chat') === c));
+  $('#click-help').textContent = CLICK_HELP[S.click_opens || 'chat'];
+  $('#click-hides').checked = S.click_hides_chat !== false;
+  $('#deck-autoclose').checked = S.deck_autoclose !== false;
   $('#deck-help').textContent = DECK_HELP[S.deck_mode] || '';
   for (const id of ['buddy', 'quiet_two', 'checks_on']) $('#' + id).checked = !!S[id];
   for (const id of ['size', 'sleep_minutes']) if (document.activeElement !== $('#' + id)) $('#' + id).value = S[id];
@@ -94,7 +99,10 @@ function render() {
   renderSvcs();
 }
 for (const p of ['normal', 'sarcastic']) $('#p-' + p).onclick = () => { S.personality = p; save(); render(); };
-for (const d of ['always', 'click', 'never']) $('#d-' + d).onclick = () => { S.deck_mode = d; save(); render(); };
+for (const d of ['always', 'never']) $('#d-' + d).onclick = () => { S.deck_mode = d; save(); render(); };
+for (const c of ['chat', 'deck']) $('#c-' + c).onclick = () => { S.click_opens = c; save(); render(); };
+$('#click-hides').onchange = (e) => { S.click_hides_chat = e.target.checked; save(); };
+$('#deck-autoclose').onchange = (e) => { S.deck_autoclose = e.target.checked; save(); };
 for (const id of ['buddy', 'quiet_two', 'checks_on']) $('#' + id).onchange = (e) => { S[id] = e.target.checked; save(); };
 document.querySelectorAll('[data-kind]').forEach((el) => { el.onchange = () => { S.kinds[el.dataset.kind] = el.checked; S.ignores[el.dataset.kind] = 0; save(); }; });
 $('#sleep_minutes').onchange = (e) => { S.sleep_minutes = Math.max(1, Math.min(120, +e.target.value || 5)); save(); render(); };

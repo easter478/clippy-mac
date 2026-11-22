@@ -105,7 +105,11 @@ input[type=number] { width: 64px; }
     <h2>Clippy and the Deck</h2>
     <div class="group">
       <div class="row"><div class="txt"><span>Show the Deck</span><small id="deck-help"></small></div>
-        <div class="seg" role="group" aria-label="Deck"><button id="d-always">Always</button><button id="d-click">When I click Clippy</button><button id="d-never">Never</button></div></div>
+        <div class="seg" role="group" aria-label="Deck"><button id="d-always">Always</button><button id="d-never">Never</button></div></div>
+      <div class="row"><div class="txt"><span>Clicking Clippy opens</span><small id="click-help"></small></div>
+        <div class="seg" role="group" aria-label="Clicking Clippy opens"><button id="c-chat">Chat</button><button id="c-deck">Deck</button></div></div>
+      <div class="row"><div class="txt"><span>Click Clippy again to hide the chat</span><small>When the chat is open, clicking Clippy hides it so only Clippy stays on screen.</small></div><input type="checkbox" class="sw" id="click-hides"></div>
+      <div class="row"><div class="txt"><span>Close the Deck after a tile</span><small>The Deck sits on Clippy and closes once you pick a tile or open the chat. Click Clippy to bring it back.</small></div><input type="checkbox" class="sw" id="deck-autoclose"></div>
       <div class="row"><div class="txt"><span>Show Clippy</span></div><input type="checkbox" class="sw" id="buddy"></div>
       <div class="row"><div class="txt"><span>Clippy's size</span></div><select id="size"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></div>
       <div class="row"><div class="txt"><span>Nap when the Mac is idle for</span><small>Messages wait and come as a summary when you're back.</small></div><input type="number" id="sleep_minutes" min="1" max="120"><span class="state">min</span></div>
@@ -122,6 +126,7 @@ input[type=number] { width: 64px; }
       <div class="row"><div class="txt"><span>Big stock moves</span></div><input type="checkbox" class="sw" data-kind="stocks"></div>
       <div class="row"><div class="txt"><span>Windows → Mac tips</span><small id="keys-help">When you press a Windows shortcut such as Ctrl+C. Terminals and remote desktops are skipped.</small></div><button class="btn" id="keys-allow" hidden>Allow…</button><input type="checkbox" class="sw" data-kind="tips"></div>
       <div class="row"><div class="txt"><span>Mac health</span><small>When the disk is over 90% full (at most once a day).</small></div><input type="checkbox" class="sw" data-kind="health"></div>
+      <div class="row"><div class="txt"><span>Screenshots and copies</span><small>A quick remark when you take a screenshot or copy something (rude in Rude mode). Clippy never looks at what you copied.</small></div><input type="checkbox" class="sw" data-kind="snaps"></div>
     </div>
   </section>
 

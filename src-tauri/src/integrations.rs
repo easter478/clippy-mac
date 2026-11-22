@@ -25,7 +25,7 @@ pub struct Integ {
 
 pub const NAMES: &[&str] = &["home_assistant", "proxmox", "portainer", "pihole", "jellyfin", "radarr", "sonarr", "qbittorrent", "stocks", "weather", "lianli"];
 
-fn label(name: &str) -> &'static str {
+pub fn label(name: &str) -> &'static str {
     match name {
         "home_assistant" => "Home Assistant",
         "proxmox" => "Proxmox",
@@ -87,7 +87,21 @@ fn need(name: &str) -> Result<String, String> {
     secrets::get(name).ok_or_else(|| format!("{} needs its token in Settings", label(name)))
 }
 
+/// Runs one integration action. Read-only actions are tried once more when the connection dropped
+/// (a server closing a reused connection, or several reads at once), never actions that change things.
 pub async fn call(st: &AppState, name: &str, action: &str, args: &Value) -> Result<Value, String> {
+    let r = call_once(st, name, action, args).await;
+    let read_only = matches!(action, "status" | "test" | "feed" | "lights" | "states");
+    match r {
+        Err(e) if read_only && (e.contains("sending request") || e.contains("connection") || e.contains("closed")) => {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            call_once(st, name, action, args).await
+        }
+        other => other,
+    }
+}
+
+async fn call_once(st: &AppState, name: &str, action: &str, args: &Value) -> Result<Value, String> {
     let cfg = st.settings.lock().integrations.get(name).cloned().unwrap_or_default();
     if !cfg.on && action != "test" {
         return Err(format!("{} is off in Settings", label(name)));
