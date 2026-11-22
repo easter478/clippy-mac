@@ -6,6 +6,7 @@ import json, sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 LOG = []
+LIGHTS = {"light.desk": "on", "light.ceiling": "off", "light.stuck": "off"}  # light.stuck ignores commands, like an offline bulb
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def send(self, code, obj=None, headers=None, raw=None):
@@ -27,8 +28,9 @@ class H(BaseHTTPRequestHandler):
         # Home Assistant
         if p == "/api/": return self.send(200, {"message": "API running."}) if auth.startswith("Bearer ") else self.send(401, {"message": "no"})
         if p == "/api/states": return self.send(200, [
-            {"entity_id": "light.desk", "state": "on", "attributes": {"friendly_name": "Desk lamp"}},
-            {"entity_id": "light.ceiling", "state": "off", "attributes": {"friendly_name": "Ceiling"}},
+            {"entity_id": "light.desk", "state": LIGHTS["light.desk"], "attributes": {"friendly_name": "Desk lamp"}},
+            {"entity_id": "light.ceiling", "state": LIGHTS["light.ceiling"], "attributes": {"friendly_name": "Ceiling"}},
+            {"entity_id": "light.stuck", "state": LIGHTS["light.stuck"], "attributes": {"friendly_name": "Porch light"}},
             {"entity_id": "light.broken", "state": "unavailable", "attributes": {"friendly_name": "Broken bulb"}},
             {"entity_id": "switch.ac", "state": "on", "attributes": {"friendly_name": "AC plug"}},
             {"entity_id": "sensor.living_temp", "state": "26.4", "attributes": {"friendly_name": "Living room temperature", "device_class": "temperature", "unit_of_measurement": "°C"}},
@@ -37,7 +39,11 @@ class H(BaseHTTPRequestHandler):
             {"entity_id": "climate.bedroom", "state": "cool", "attributes": {"friendly_name": "Bedroom AC", "hvac_action": "cooling", "current_temperature": 25, "temperature": 23, "current_humidity": 55}},
             {"entity_id": "binary_sensor.front_door", "state": "off", "attributes": {"friendly_name": "Front door", "device_class": "door"}},
             {"entity_id": "weather.home", "state": "partlycloudy", "attributes": {"friendly_name": "Home", "temperature": 29, "temperature_unit": "°C", "humidity": 70}}])
-        if p.startswith("/api/services/light/"): return self.send(200, [{"entity_id": x} for x in json.loads(b or b"{}").get("entity_id", [])])
+        if p.startswith("/api/services/light/"):
+            ids = json.loads(b or b"{}").get("entity_id", [])
+            for x in ids:
+                if x in LIGHTS and x != "light.stuck": LIGHTS[x] = "on" if p.endswith("turn_on") else "off"
+            return self.send(200, [{"entity_id": x} for x in ids])
         # Proxmox
         if p == "/api2/json/cluster/resources":
             if not auth.startswith("PVEAPIToken=root@pam!clippy="): return self.send(401, {"data": None})

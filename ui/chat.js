@@ -78,7 +78,7 @@ function wireNoModel() {
     try { await invoke('model_download', { id: rec.id }); } catch (e) { if (e !== 'cancelled') $('#dltext').textContent = String(e); $('#dl').disabled = false; }
     await refresh();
   };
-  $('#more').onclick = () => invoke('show_window', { which: 'settings' });
+  $('#more').onclick = openSettings;
 }
 listen('model-progress', (e) => {
   const p = e.payload;
@@ -95,20 +95,44 @@ async function refresh() {
   sel.innerHTML = info.installed.length ? info.installed.map((m) => `<option value="${esc(m.path)}" ${m.path === S.model ? 'selected' : ''}>${esc(m.name)}</option>`).join('') + '<option value="__more">More models…</option>' : '<option>No model yet</option>';
   sel.disabled = !info.installed.length;
   if (info.installed.length && !info.installed.some((m) => m.path === S.model)) { S.model = info.installed[0].path; await invoke('save_settings', { settings: S }); }
-  paintPersona();
   render();
 }
 $('#model').onchange = async (e) => {
-  if (e.target.value === '__more') { e.target.value = S.model; return invoke('show_window', { which: 'settings' }); }
+  if (e.target.value === '__more') { e.target.value = S.model; return openSettings(); }
   S.model = e.target.value; await invoke('save_settings', { settings: S }); render();
 };
-function paintPersona() {
-  $('#p-normal').setAttribute('aria-pressed', String(S.personality !== 'sarcastic'));
-  $('#p-sarcastic').setAttribute('aria-pressed', String(S.personality === 'sarcastic'));
+// Settings open as a page inside this window (never a separate window that can hide behind others).
+function openSettings() { if (busy) { $('#status').textContent = 'Settings open once Clippy has finished answering.'; return; } location.replace('settings.html'); }
+$('#gear').onclick = openSettings;
+
+// --- the Deck's tiles, right here in the chat (handy when the Deck panel is set to Never) ---
+async function paintDeck() {
+  let custom = { actions: [] };
+  try { custom = await invoke('custom_list'); } catch {}
+  const list = deckTiles(S, custom, true);
+  $('#dtiles').innerHTML = list.map((t, i) => `<button class="dtile" data-i="${i}"><svg viewBox="0 0 24 24">${TILE_ICONS[t.icon]}</svg><span>${esc(t.label)}</span></button>`).join('');
+  $('#dtiles').querySelectorAll('.dtile').forEach((b) => {
+    b.onclick = async () => {
+      const t = list[+b.dataset.i];
+      if (!S.buddy) await invoke('show_window', { which: 'buddy' });
+      emit('tile', { id: t.id, index: t.index });
+      showDeck(false);
+      $('#status').textContent = 'Clippy is on it, next to the chat →';
+      setTimeout(() => { if ($('#status').textContent.startsWith('Clippy is on it')) $('#status').textContent = ''; }, 4000);
+    };
+  });
 }
-for (const p of ['normal', 'sarcastic']) $('#p-' + p).onclick = async () => { S.personality = p; await invoke('save_settings', { settings: S }); paintPersona(); if (!msgs.length) render(); };
+function showDeck(open) {
+  $('#deckp').hidden = !open;
+  $('#deckbtn').setAttribute('aria-expanded', String(open));
+  if (open) paintDeck();
+}
+$('#deckbtn').onclick = () => showDeck($('#deckp').hidden);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#deckp').hidden) showDeck(false); });
+document.addEventListener('mousedown', (e) => { if (!$('#deckp').hidden && !e.target.closest('#deckp, #deckbtn')) showDeck(false); });
+document.addEventListener('keydown', (e) => { if (e.metaKey && e.key === ',') { e.preventDefault(); openSettings(); } });
 $('#new').onclick = () => { if (busy) return; msgs = []; keep(); render(); $('#q').focus(); };
-listen('settings', (e) => { const had = S.model; S = e.payload; paintPersona(); if (had !== S.model) refresh(); });
+listen('settings', (e) => { const had = S.model, hadP = S.personality; S = e.payload; if (had !== S.model) refresh(); else if (hadP !== S.personality && !msgs.length) render(); });
 listen('engine', (e) => {
   const v = e.payload;
   $('#status').textContent = v.kind === 'loading' ? `Waking up ${v.model}…` : '';
@@ -161,6 +185,7 @@ async function send(text) {
 }
 
 T.window.getCurrentWindow().onFocusChanged(({ payload }) => { if (payload) { refresh(); setTimeout(() => q.focus(), 30); } });
+if (await invoke('take_want_settings')) { location.replace('settings.html'); return; }
 await refresh();
 q.focus();
 const t = await invoke('test_ask');

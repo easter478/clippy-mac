@@ -7,10 +7,15 @@
 <style>
 /* Settings: native sidebar vibrancy behind the whole window; groups are translucent tints, never solid boxes. */
 body { overflow-y: auto; }
-.top { position: sticky; top: 0; z-index: 2; height: 52px; -webkit-app-region: drag; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.top { position: fixed; top: 0; left: 0; right: 0; z-index: 5; height: 52px; -webkit-app-region: drag; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 80px;
+  background: color-mix(in srgb, var(--surface-strong) 55%, transparent); border-bottom: 1px solid var(--line); backdrop-filter: blur(24px) saturate(1.4); -webkit-backdrop-filter: blur(24px) saturate(1.4); }
+.top .back { -webkit-app-region: no-drag; display: inline-flex; align-items: center; gap: 2px; border: 0; background: transparent; color: var(--accent);
+  font-size: 13px; font-weight: 600; padding: 4px 8px 4px 4px; border-radius: 7px; }
+.top .back:hover { background: var(--surface-hover); }
+.top .back svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .top .logo svg { width: 12px; height: 19px; display: block; color: var(--fg); }
 .top b { font-size: 13px; font-weight: 650; }
-main { max-width: 600px; margin: 0 auto; padding: 4px 22px 40px; display: flex; flex-direction: column; gap: 18px; }
+main { max-width: 600px; margin: 0 auto; padding: 64px 14px 40px; display: flex; flex-direction: column; gap: 18px; }
 h2 { margin: 0 0 7px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 650; }
 .group { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: inset 0 1px 0 var(--rim); overflow: hidden; }
 .row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--line); min-height: 44px; }
@@ -38,6 +43,7 @@ input[type=number] { width: 64px; }
 .bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s; }
 .tag { font-size: 10.5px; font-weight: 650; padding: 1px 6px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); margin-left: 6px; vertical-align: 1px; }
 .tag.gray { background: var(--surface-strong); color: var(--muted); }
+.row .txt span.tag { display: inline-block; font-size: 10.5px; }
 .integ .body { display: none; padding: 2px 14px 12px; border-top: 1px dashed var(--line); }
 .integ.open .body { display: grid; grid-template-columns: 150px 1fr; gap: 8px 10px; align-items: center; padding-top: 10px; }
 .integ .body label { font-size: 12px; color: var(--muted); }
@@ -57,17 +63,27 @@ input[type=number] { width: 64px; }
   border-radius: 999px; padding: 5px 12px; font-size: 12px; color: var(--muted); opacity: 0; transition: opacity .2s; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
 .saved.show { opacity: 1; }
 [hidden] { display: none !important; }
+/* the chat window is narrow: stack labels over fields and let controls wrap under their text */
+@media (max-width: 560px) {
+  .row { flex-wrap: wrap; row-gap: 6px; }
+  .row .txt { min-width: 60%; }
+  .integ.open .body { grid-template-columns: 1fr; gap: 4px 0; }
+  .integ .body label { margin-top: 4px; }
+  input.addr { width: 100%; }
+  .svc input:first-child { width: 96px; }
+}
 </style>
 </head>
 <body>
-<div class="top"><span class="logo" id="logo"></span><b>Clippy Settings</b></div>
+<div class="top"><button class="back" id="back" title="Back to the chat (Esc)"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>Chat</button><b>Settings</b><span class="logo" id="logo" hidden></span></div>
 <main>
   <section>
     <h2>Chat · Clippy's brain</h2>
     <div class="group">
-      <div class="row"><div class="txt"><span>Model</span><small id="model-help">Runs on this Mac. Nothing you type leaves it.</small></div><select id="model" style="max-width:240px"></select></div>
+      <div class="row"><div class="txt"><span>Model</span><small id="model-help">Runs on this Mac.</small></div><select id="model" style="max-width:240px"></select></div>
       <div id="recs"></div>
       <div class="row"><div class="txt"><span>Use a model file you already have</span><small>Any Qwen (or other ChatML) GGUF file on this Mac.</small></div><button class="btn" id="add-model">Add a model file…</button></div>
+      <div class="row"><div class="txt"><span>Keep the chat above other windows</span><small>So it never hides behind other apps while it's open.</small></div><input type="checkbox" class="sw" id="chat-top"></div>
       <div class="row"><div class="txt"><span>Look things up on Wikipedia</span><small>For “who is…”, “what is…” and “tell me about…” questions, Clippy reads Wikipedia first. Only that search leaves your Mac.</small></div>
         <input type="checkbox" class="sw" id="web-lookup"></div>
       <div class="row"><div class="txt"><span>Chat memory</span><small>How much of the conversation Clippy remembers. More uses more memory.</small></div>

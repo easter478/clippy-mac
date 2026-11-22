@@ -60,15 +60,32 @@ body { display: flex; flex-direction: column; height: 100vh; }
 #send.stop { background: var(--bad); }
 #send:disabled { opacity: .45; }
 [hidden] { display: none !important; }
+/* the Deck's tiles inside the chat: a frosted sheet under the header */
+body { position: relative; }
+#deckbtn[aria-expanded="true"] { color: var(--accent); background: var(--accent-soft); }
+.deckp { position: absolute; top: 52px; left: 10px; right: 10px; z-index: 4; padding: 10px; border-radius: 14px; border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-strong) 70%, transparent); box-shadow: inset 0 1px 0 var(--rim), 0 12px 32px rgba(0,0,0,.28);
+  backdrop-filter: blur(28px) saturate(1.5); -webkit-backdrop-filter: blur(28px) saturate(1.5); max-height: calc(100vh - 140px); overflow-y: auto; }
+.dhead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 2px 8px; }
+.dhead b { font-size: 12px; font-weight: 650; } .dhead small { font-size: 11px; color: var(--muted); }
+.dtiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.dtile { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 9px 4px 8px; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 5px; font-size: 11px; font-weight: 550; line-height: 1.2; color: var(--fg); min-height: 62px; min-width: 0;
+  box-shadow: inset 0 1px 0 var(--rim); transition: background .14s, transform .08s; }
+.dtile:hover { background: var(--surface-hover); } .dtile:active { transform: scale(.96); }
+.dtile span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
+.dtile svg { width: 19px; height: 19px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 </style>
 </head>
 <body>
 <div class="top">
   <span class="logo" id="logo"></span><b>Clippy</b>
-  <div class="seg" role="group" aria-label="Personality"><button id="p-normal" title="Friendly">Nice</button><button id="p-sarcastic" title="Sarcastic, swears a little">Rude</button></div>
   <select class="chip" id="model" aria-label="Model"></select>
   <button class="icon-btn" id="new" title="New chat" aria-label="New chat"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+  <button class="icon-btn" id="gear" title="Settings (⌘,)" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  <button class="icon-btn" id="deckbtn" title="Deck" aria-label="Deck" aria-expanded="false"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg></button>
 </div>
+<div class="deckp" id="deckp" hidden><div class="dhead"><b>Clippy Deck</b><small>Clippy answers next to the chat</small></div><div class="dtiles" id="dtiles"></div></div>
 <div id="log"></div>
 <div id="status"></div>
 <form class="compose" id="form">
@@ -76,6 +93,7 @@ body { display: flex; flex-direction: column; height: 100vh; }
   <button id="send" aria-label="Send"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
 </form>
 <script src="clip.js"></script>
+<script src="tiles.js"></script>
 <script src="chat.js"></script>
 </body>
 </html>

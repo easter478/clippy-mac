@@ -58,30 +58,6 @@
         }
       },
       {
-        "label": "settings",
-        "url": "settings.html",
-        "title": "Clippy Settings",
-        "width": 620,
-        "height": 720,
-        "minWidth": 520,
-        "minHeight": 520,
-        "titleBarStyle": "Overlay",
-        "hiddenTitle": true,
-        "transparent": true,
-        "trafficLightPosition": {
-          "x": 18,
-          "y": 22
-        },
-        "visible": false,
-        "dragDropEnabled": false,
-        "windowEffects": {
-          "effects": [
-            "sidebar"
-          ],
-          "state": "followsWindowActiveState"
-        }
-      },
-      {
         "label": "chat",
         "url": "chat.html",
         "title": "Chat with Clippy",

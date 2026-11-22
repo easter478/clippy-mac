@@ -24,7 +24,7 @@ async function models() {
   sel.innerHTML = info.installed.length ? info.installed.map((m) => `<option value="${esc(m.path)}" ${m.path === S.model ? 'selected' : ''}>${esc(m.name)} · ${gb(m.bytes)}${m.added ? ' (added)' : ''}</option>`).join('')
     : '<option value="">None yet: download one below</option>';
   const cur = info.installed.find((m) => m.path === S.model);
-  $('#model-help').innerHTML = cur ? `Runs on this Mac. Nothing you type leaves it.${cur.added ? ` <a id="forget">Forget this file</a>` : ''}` : 'Download one below. It runs fully on this Mac.';
+  $('#model-help').innerHTML = cur ? `Runs on this Mac.${S.web_lookup ? ' Only Wikipedia searches leave it.' : ' Nothing you type leaves it.'}${cur.added ? ` <a id="forget">Forget this file</a>` : ''}` : 'Download one below. It runs fully on this Mac.';
   if (cur?.added) $('#forget').onclick = async () => { await invoke('model_remove', { path: cur.path }); S = await invoke('get_settings'); models(); };
   const ram = info.recommended.ram;
   $('#recs').innerHTML = info.recommended.list.map((r) => {
@@ -32,7 +32,7 @@ async function models() {
     const btn = r.have ? (info.installed.find((m) => m.file === r.file)?.path === S.model ? '<span class="state ok">In use</span>' : `<button class="btn" data-use="${esc(r.file)}">Use</button><button class="del" title="Move to the Bin" data-rm="${esc(r.file)}">×</button>`)
       : busy ? '<button class="btn" data-cancel>Cancel</button>' : `<button class="btn ${r.suggested ? 'primary' : ''}" data-dl="${r.id}" ${info.downloading ? 'disabled' : ''}>${r.partial ? 'Resume' : 'Download'}</button>`;
     return `<div class="row"><div class="txt"><span>${esc(r.name)}${r.suggested ? '<span class="tag">Best for this Mac</span>' : ''}${!r.fits ? `<span class="tag gray">Needs ${r.minRam} GB</span>` : ''}</span>
-      <small>${r.gb} GB download · ${esc(r.note)}</small>${busy || r.partial ? `<div class="bar"><i id="bar-${r.id}" style="width:${r.partial ? Math.min(99, r.partial / (r.gb * 1e9) * 100) : 0}%"></i></div><small id="dl-${r.id}"></small>` : ''}</div>${btn}</div>`;
+      <small>${(+r.gb).toFixed(1).replace(/\.0$/, '')} GB download · ${esc(r.note)}</small>${busy || r.partial ? `<div class="bar"><i id="bar-${r.id}" style="width:${r.partial ? Math.min(99, r.partial / (r.gb * 1e9) * 100) : 0}%"></i></div><small id="dl-${r.id}"></small>` : ''}</div>${btn}</div>`;
   }).join('');
   $('#recs').querySelectorAll('[data-dl]').forEach((b) => { b.onclick = () => download(b.dataset.dl); });
   $('#recs').querySelectorAll('[data-cancel]').forEach((b) => { b.onclick = () => invoke('model_cancel'); });
@@ -48,6 +48,7 @@ async function models() {
   $('#ctx').value = String(S.ctx);
   $('#unload').value = String(S.unload_minutes);
   $('#web-lookup').checked = S.web_lookup !== false;
+  $('#chat-top').checked = S.chat_on_top !== false;
 }
 async function download(id) {
   const p = invoke('model_download', { id });
@@ -71,10 +72,16 @@ $('#add-model').onclick = async () => {
 $('#ctx').onchange = (e) => { S.ctx = +e.target.value; save(); };
 $('#unload').onchange = (e) => { S.unload_minutes = +e.target.value; save(); };
 $('#web-lookup').onchange = (e) => { S.web_lookup = e.target.checked; save(); };
+$('#chat-top').onchange = (e) => { S.chat_on_top = e.target.checked; save(); };
+// this page lives inside the chat window: back (or Esc) returns to the conversation
+invoke('take_want_settings');
+const back = () => location.replace('chat.html');
+$('#back').onclick = back;
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.target.closest?.('input,textarea,select')) back(); });
 $('#unload-now').onclick = async () => { await invoke('model_unload'); models(); };
 
 // ---------------- personality, Clippy, Deck ----------------
-const DECK_HELP = { always: 'Docked on the right edge of the screen. Clicking Clippy opens the chat.', click: 'Hidden until you click Clippy; click him again to hide it. Chat is a tile on the Deck.', never: 'Clicking Clippy opens the chat. Right-click him for the Deck.' };
+const DECK_HELP = { always: 'Docked on the right edge of the screen. Clicking Clippy opens the chat.', click: 'Hidden until you click Clippy; click him again to hide it. Chat is a tile on the Deck.', never: 'No Deck panel. Clicking Clippy opens the chat; its tiles are behind the grid button next to ⚙ in the chat.' };
 function render() {
   PERSONALITY = S.personality;
   for (const p of ['normal', 'sarcastic']) $('#p-' + p).setAttribute('aria-pressed', String(S.personality === p));

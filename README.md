@@ -6,7 +6,7 @@ It's an original character and isn't affiliated with Microsoft.
 
 - **Chat on your Mac.** Pick a Qwen model you already have, or download a recommended one with one click. The model runs on your Mac.
 - **Knows things.** Questions like "who is…" or "tell me about…" are looked up on Wikipedia first, so even a small model answers correctly. This can be turned off.
-- **Talks to your home.** Ask about temperature, humidity, the AC or doors, or say "turn off the desk lamp". Home Assistant data is read live when you ask.
+- **Talks to your home.** Ask about temperature, humidity, the AC or doors, or say "turn off the desk lamp". Home Assistant data is read live when you ask. Clippy itself switches the lights (it never relies on the model to send the command) and checks afterwards that each one really changed.
 - **Two personalities.** *Nice*, or *Rude*: sarcastic, mildly sweary, never mean.
 - **Homelab and home integrations.** Each one is optional: Home Assistant lights, Proxmox, Portainer, Pi-hole, Jellyfin, Radarr, Sonarr, qBittorrent, stocks, weather, plain "is it up?" checks, and a Lian Li screen.
 - **Custom actions.** Add your own Deck tiles that call any HTTP service, using a JSON file. Secrets stay in the Keychain.
@@ -16,7 +16,7 @@ It's an original character and isn't affiliated with Microsoft.
 
 1. Download `Clippy-<version>.dmg`, open it and drag **Clippy** into **Applications**.
 2. The app isn't notarised by Apple, so the first time: right-click Clippy in Applications → **Open** (or System Settings → Privacy & Security → **Open Anyway**).
-3. Clippy appears on the desktop and as a paperclip in the menu bar. Open **Settings…** from the menu bar to choose a model and turn on integrations.
+3. Clippy appears on the desktop and as a paperclip in the menu bar. Click him to chat. Settings (⚙, or ⌘,) and the Deck's tiles (the grid button) are both inside the chat window.
 
 macOS may ask you for these:
 
@@ -140,7 +140,7 @@ This builds the Swift helper and the Tauri app, signs them and creates `dist/Cli
 | `src-tauri/src/secrets.rs` | Keychain storage |
 | `src-tauri/src/cli.rs` | Command-line test mode |
 | `helper/main.swift` | Sidecar for idle time, Mac health and the shortcut tips |
-| `ui/` | Buddy, Deck, chat and Settings windows (plain HTML/JS) |
+| `ui/` | Buddy, Deck and chat windows (plain HTML/JS); Settings is a page inside the chat; `tiles.js` is the tile list the Deck and the chat share |
 | `tools/mock-services.py` | Fake home services for testing integrations |
 
 ### Test from Terminal

@@ -46,6 +46,7 @@ pub struct Settings {
     pub ctx: u32,                 // chat memory in tokens
     pub unload_minutes: u32,      // free the model after this many idle minutes (0 = never)
     pub web_lookup: bool,         // look general questions up on Wikipedia
+    pub chat_on_top: bool,        // keep the chat window above other apps' windows
     pub kinds: BTreeMap<String, bool>,
     pub quiet_two: bool,
     pub ignores: BTreeMap<String, u32>,
@@ -73,6 +74,7 @@ impl Default for Settings {
             ctx: 8192,
             unload_minutes: 10,
             web_lookup: true,
+            chat_on_top: true,
             kinds: KINDS.iter().map(|k| (k.to_string(), true)).collect(),
             quiet_two: true,
             ignores: BTreeMap::new(),
@@ -109,6 +111,8 @@ pub struct AppState {
     deck_open: AtomicBool,
     /// Height the Deck's tiles need (set by the Deck itself).
     deck_h: Mutex<f64>,
+    /// "Open Settings" was asked for; the chat page reads and clears it when it loads.
+    want_settings: AtomicBool,
 }
 
 struct MenuRefs {
@@ -202,6 +206,9 @@ fn apply_settings(app: &AppHandle, state: &AppState) {
     state.engine.idle_secs.store(s.unload_minutes as u64 * 60, Ordering::Relaxed);
     if let Some(m) = state.menu.lock().as_ref() {
         let _ = m.buddy.set_checked(s.buddy);
+    }
+    if let Some(w) = app.get_webview_window("chat").filter(|w| w.is_visible().unwrap_or(false)) {
+        let _ = w.set_always_on_top(s.chat_on_top);
     }
     if let Some(w) = app.get_webview_window("buddy") {
         if s.buddy && !w.is_visible().unwrap_or(false) {
@@ -308,13 +315,17 @@ fn deck_toggle(app: AppHandle) -> bool {
 
 fn front(app: &AppHandle, w: &WebviewWindow) {
     let _ = w.show();
-    // briefly float it so it lands above other apps' windows even when macOS won't switch apps
+    // float it so it lands above other apps' windows even when macOS won't switch apps; with
+    // "Keep the chat above other windows" it stays floating, otherwise only for a moment
     let _ = w.set_always_on_top(true);
-    let w2 = w.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(600));
-        let _ = w2.set_always_on_top(false);
-    });
+    let keep = w.label() == "chat" && app.state::<Arc<AppState>>().settings.lock().chat_on_top;
+    if !keep {
+        let w2 = w.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(600));
+            let _ = w2.set_always_on_top(false);
+        });
+    }
     #[cfg(target_os = "macos")]
     {
         let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
@@ -327,12 +338,10 @@ fn front(app: &AppHandle, w: &WebviewWindow) {
 #[tauri::command]
 fn show_window(app: AppHandle, which: String) {
     match which.as_str() {
+        // Settings is a page inside the chat window, so it can never open behind other windows
         "settings" | "chat" => {
-            if let Some(w) = app.get_webview_window(&which) {
-                if !w.is_visible().unwrap_or(false) && which == "settings" {
-                    let _ = w.center();
-                }
-                if !w.is_visible().unwrap_or(false) && which == "chat" {
+            if let Some(w) = app.get_webview_window("chat") {
+                if !w.is_visible().unwrap_or(false) {
                     // open the chat just left of Clippy, inside the screen
                     let (ax, ay, aw, ah) = work_area(&w);
                     let (right, bottom) = app.state::<Arc<AppState>>().settings.lock().buddy_pos.unwrap_or((ax + aw - 250.0, ay + ah - 8.0));
@@ -348,6 +357,13 @@ fn show_window(app: AppHandle, which: String) {
                     let y = (bottom - ch - 10.0).clamp(ay + 8.0, (ay + ah - ch - 8.0).max(ay + 8.0));
                     let _ = w.set_position(LogicalPosition::new(x, y));
                 }
+                // if the page is still loading, the eval can be lost: the chat asks for this flag once it's up
+                app.state::<Arc<AppState>>().want_settings.store(which == "settings", Ordering::Relaxed);
+                let _ = w.eval(if which == "settings" {
+                    "if (!location.pathname.endsWith('settings.html')) location.replace('settings.html')"
+                } else {
+                    "if (location.pathname.endsWith('settings.html')) location.replace('chat.html')"
+                });
                 front(&app, &w);
             }
         }
@@ -380,7 +396,7 @@ fn hide_window(app: AppHandle, which: String) {
             }
         }
         "settings" | "chat" => {
-            if let Some(w) = app.get_webview_window(&which) {
+            if let Some(w) = app.get_webview_window("chat") {
                 let _ = w.hide();
             }
         }
@@ -687,14 +703,27 @@ async fn chat_send(state: tauri::State<'_, Arc<AppState>>, messages: Vec<Msg>, o
         max_tokens: 1500,
     };
     let st2 = st.clone();
+    let already = prep.done.clone();
+    // the model's own switch commands only count when the message really asked for an on/off
+    let asked = assist::light_command(&question).is_some();
     let sink: engine::Sink = Box::new(move |ev| match ev {
         Ev::Piece(p) => {
             let _ = on_event.send(json!({"kind": "piece", "text": p}));
         }
         Ev::Done { text, tps, tokens, stopped, trimmed } => {
-            let (mut clean, acts, blocked) = assist::take_actions(&text);
+            let (mut clean, mut acts, blocked) = assist::take_actions(&text);
             if blocked {
                 clean = format!("{clean}\n\n{}", assist::BLOCKED).trim().to_string();
+            }
+            if !asked {
+                acts.clear();
+            }
+            if let Some(r) = &already {
+                acts.clear(); // Clippy already switched them for this message
+                // the model sometimes copies the result lines; keep only Clippy's own copy, added below
+                let mine: Vec<&str> = r.lines().map(str::trim).collect();
+                let kept: Vec<&str> = clean.lines().filter(|l| !mine.contains(&l.trim()) && !l.trim_start().starts_with('⚠')).collect();
+                clean = format!("{}\n\n{r}", kept.join("\n").trim()).trim().to_string();
             }
             let done = move |text: String| json!({"kind": "done", "text": text, "tps": tps, "tokens": tokens, "stopped": stopped, "trimmed": trimmed});
             if acts.is_empty() || stopped {
@@ -715,6 +744,11 @@ async fn chat_send(state: tauri::State<'_, Arc<AppState>>, messages: Vec<Msg>, o
     });
     st.engine.generate(req, sink);
     Ok(())
+}
+
+#[tauri::command]
+fn take_want_settings(state: tauri::State<Arc<AppState>>) -> bool {
+    state.want_settings.swap(false, Ordering::Relaxed)
 }
 
 /// Test hook: CLIPPY_TEST_ASK="question" makes the chat window send it once when it opens.
@@ -852,6 +886,7 @@ fn make_state(notify: engine::Notify) -> Arc<AppState> {
         geo: Mutex::new(None),
         deck_open: AtomicBool::new(false),
         deck_h: Mutex::new(560.0),
+        want_settings: AtomicBool::new(false),
     })
 }
 
@@ -883,7 +918,7 @@ pub fn run() {
             get_settings, save_settings, buddy_fit, buddy_moved, deck_collapse, deck_toggle, deck_fit, show_window, hide_window, set_tray_title, quit,
             integ, secrets_status, secret_set, check_services,
             custom_list, custom_run, custom_watch, custom_import, custom_example, reveal_data,
-            models_info, model_download, model_cancel, model_add, model_remove, model_unload, set_context, chat_send, chat_stop, test_ask,
+            models_info, model_download, model_cancel, model_add, model_remove, model_unload, set_context, chat_send, chat_stop, test_ask, take_want_settings,
             mac_health, request_key_access, copy_text, paste_text, open_url
         ])
         .setup(move |app| {
@@ -905,7 +940,7 @@ pub fn run() {
         })
         .on_window_event(|w, e| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = e {
-                if w.label() == "settings" || w.label() == "chat" {
+                if w.label() == "chat" {
                     api.prevent_close();
                     let _ = w.hide();
                 }

@@ -15,6 +15,8 @@ pub struct Prepared {
     pub context: String,
     /// Wikipedia page used: (title, url).
     pub source: Option<(String, String)>,
+    /// What Clippy itself switched for this message, checked against Home Assistant afterwards.
+    pub done: Option<String>,
 }
 
 fn num(v: &Value) -> Option<String> {
@@ -70,7 +72,8 @@ pub fn ha_text(v: &Value) -> String {
     if !lights.is_empty() {
         out.push("To switch lights when the user asks you to, write your short reply and then, as the very last line, \
             `ACTION: light on <entity ids>` or `ACTION: light off <entity ids>` using only ids in [brackets] from the Lights list \
-            (several ids separated by spaces). Clippy runs it and reports the result, so don't claim it's done yourself. \
+            (several ids separated by spaces). Without that line nothing happens. Clippy runs it and adds the real result under \
+            your reply, so never say a light is now on or off yourself, and never write ✓ lines. \
             Never try to switch anything that isn't in the Lights list.".to_string());
     }
     out.join("\n")
@@ -89,6 +92,10 @@ pub fn take_actions(text: &str) -> (String, Vec<(bool, Vec<String>)>, bool) {
         let l = line.trim().trim_matches('`').trim();
         if ECHO.iter().any(|e| l.starts_with(e)) {
             continue;
+        }
+        let lower = l.to_lowercase();
+        if (l.starts_with('✓') || l.starts_with('✔') || l.starts_with("✅")) && ["turned", "switched", "now on", "now off", "light", "lamp"].iter().any(|w| lower.contains(w)) {
+            continue; // only Clippy writes the result line, after it has really switched something
         }
         let rest = l.strip_prefix("ACTION:").or_else(|| l.strip_prefix("Action:")).map(str::trim);
         match rest.and_then(|r| r.strip_prefix("light ")) {
@@ -136,6 +143,78 @@ pub async fn run_actions(st: &AppState, acts: &[(bool, Vec<String>)]) -> String 
         }
     }
     lines.join("\n")
+}
+
+
+/// "turn off the desk lamp", "lights on", "switch on all the lights": which lights to switch, worked out here
+/// rather than trusting a small model to emit the command. Returns (on?, entity ids). Questions never match.
+fn words(q: &str) -> String {
+    let low: String = q.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c == '\'' { c } else { ' ' }).collect();
+    format!(" {} ", low.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
+/// Is this message an on/off command (not a question)? Some(true) = on, Some(false) = off.
+pub fn light_command(q: &str) -> Option<bool> {
+    let low = words(q);
+    if q.contains('?') || ["is ", "are ", "was ", "were ", "did ", "do ", "does ", "why ", "how ", "what ", "which ", "when ", "can you tell"].iter().any(|w| low.trim_start().starts_with(w)) {
+        return None;
+    }
+    let off = low.contains(" off ") || low.contains(" lights out ") || low.contains(" kill the light");
+    let on = low.contains(" on ");
+    if on == off {
+        return None;
+    }
+    let verb = ["turn ", "urn ", "switch ", "put ", "set "].iter().any(|v| low.contains(&format!(" {v}")))
+        || ["light on", "lights on", "lamp on", "lamps on", "light off", "lights off", "lamp off", "lamps off", "lights out", "kill the light"].iter().any(|p| low.contains(p));
+    verb.then_some(on)
+}
+
+pub fn light_intent(q: &str, lights: &[Value]) -> Option<(bool, Vec<String>)> {
+    let on = light_command(q)?;
+    let low = words(q);
+    const SKIP: [&str; 8] = ["light", "lights", "lamp", "lamps", "the", "bulb", "bulbs", "strip"];
+    let avail: Vec<&Value> = lights.iter().filter(|l| l["available"] != false).collect();
+    let named: Vec<String> = avail.iter().filter(|l| {
+        let name = l["name"].as_str().unwrap_or("").to_lowercase();
+        let words: Vec<&str> = name.split(|c: char| !c.is_alphanumeric()).filter(|w| w.len() >= 3 && !SKIP.contains(w)).collect();
+        !words.is_empty() && words.iter().all(|w| low.contains(&format!(" {w} ")) || low.contains(&format!(" {w}s ")))
+    }).filter_map(|l| l["entity"].as_str().map(String::from)).collect();
+    if !named.is_empty() {
+        return Some((on, named));
+    }
+    let general = [" lights ", " all ", " everything ", " every light ", " the light ", " light ", " lamp ", " lamps "].iter().any(|w| low.contains(w));
+    if general && !avail.is_empty() {
+        return Some((on, avail.iter().filter_map(|l| l["entity"].as_str().map(String::from)).collect()));
+    }
+    None
+}
+
+/// Switches lights, then reads them back after a moment and says what really changed.
+pub async fn switch_lights(st: &AppState, on: bool, ids: &[String], before: &[Value]) -> String {
+    let name = |id: &str, from: &[Value]| from.iter().find(|l| l["entity"] == id).and_then(|l| l["name"].as_str()).unwrap_or(id).to_string();
+    if let Err(e) = integrations::call(st, "home_assistant", "set", &json!({"on": on, "entities": ids})).await {
+        return format!("⚠ Home Assistant didn't switch the lights: {e}");
+    }
+    tokio::time::sleep(Duration::from_millis(2000)).await;
+    let after = match integrations::call(st, "home_assistant", "lights", &json!({})).await {
+        Ok(v) => v["lights"].as_array().cloned().unwrap_or_default(),
+        Err(_) => return format!("✓ Asked Home Assistant to turn {} {}. (Couldn't read them back to check.)", if on { "on" } else { "off" }, ids.iter().map(|i| name(i, before)).collect::<Vec<_>>().join(", ")),
+    };
+    let (mut ok, mut stuck) = (vec![], vec![]);
+    for id in ids {
+        let now_on = after.iter().find(|l| l["entity"] == id.as_str()).map(|l| l["on"] == true);
+        if now_on == Some(on) { ok.push(name(id, before)) } else { stuck.push(name(id, before)) }
+    }
+    let word = if on { "on" } else { "off" };
+    let mut out = vec![];
+    if !ok.is_empty() {
+        out.push(format!("✓ Turned {word} {}.", ok.join(", ")));
+    }
+    if !stuck.is_empty() {
+        out.push(format!("⚠ Home Assistant took the command, but {} still {} {}: {} not responding (offline, or the bulb is switched off at the wall).",
+            stuck.join(", "), if stuck.len() == 1 { "shows" } else { "show" }, if on { "off" } else { "on" }, if stuck.len() == 1 { "it may be" } else { "they may be" }));
+    }
+    out.join("\n")
 }
 
 /// Is this a general-knowledge question worth a Wikipedia lookup? Returns what to search for.
@@ -209,15 +288,13 @@ pub async fn prepare(st: &AppState, question: &str, status: impl Fn(&str)) -> Pr
     let s = st.settings.lock().clone();
     let mut ctx = vec![];
     let mut source = None;
+    let mut done = None;
     let ha_on = s.integrations.get("home_assistant").map(|i| i.on && !i.url.is_empty()).unwrap_or(false);
     let ha = async {
         if !ha_on {
             return None;
         }
-        Some(match integrations::call(st, "home_assistant", "states", &json!({})).await {
-            Ok(v) => ha_text(&v),
-            Err(e) => format!("Home Assistant: couldn't read it just now ({e})."),
-        })
+        Some(integrations::call(st, "home_assistant", "states", &json!({})).await)
     };
     let q = if s.web_lookup { lookup_query(question) } else { None };
     if q.is_some() {
@@ -230,8 +307,23 @@ pub async fn prepare(st: &AppState, question: &str, status: impl Fn(&str)) -> Pr
         }
     };
     let (h, w) = tokio::join!(ha, wiki);
-    if let Some(h) = h {
-        ctx.push(h);
+    match h {
+        Some(Ok(mut v)) => {
+            let lights = v["lights"].as_array().cloned().unwrap_or_default();
+            if let Some((on, ids)) = light_intent(question, &lights) {
+                status("Switching the lights…");
+                let result = switch_lights(st, on, &ids, &lights).await;
+                if let Ok(v2) = integrations::call(st, "home_assistant", "states", &json!({})).await {
+                    v = v2;
+                }
+                ctx.push(format!("Clippy has ALREADY switched lights for this message. The real result, which is shown to the user under your reply \
+                    (don't repeat it, don't write an ACTION line, just react in one short sentence): {result}"));
+                done = Some(result);
+            }
+            ctx.push(ha_text(&v));
+        }
+        Some(Err(e)) => ctx.push(format!("Home Assistant: couldn't read it just now ({e}). Say so if the user asks about the home; never pretend.")),
+        None => {}
     }
     if let Some((title, extract, url)) = w {
         ctx.push(format!("Wikipedia, “{title}” (looked up just now for this question; answer from it, in your own words):\n{extract}"));
@@ -239,7 +331,7 @@ pub async fn prepare(st: &AppState, question: &str, status: impl Fn(&str)) -> Pr
     } else if q.is_some() {
         ctx.push("A Wikipedia lookup for this question found nothing. If you don't know, say so; don't guess.".into());
     }
-    Prepared { context: ctx.join("\n"), source }
+    Prepared { context: ctx.join("\n"), source, done }
 }
 
 #[cfg(test)]
@@ -255,6 +347,20 @@ mod tests {
         assert_eq!(lookup_query("turn off the lights"), None);
     }
     #[test]
+    fn intents() {
+        let l = vec![json!({"entity": "light.desk", "name": "Desk lamp", "available": true}), json!({"entity": "light.ceiling", "name": "Ceiling", "available": true}),
+            json!({"entity": "light.broken", "name": "Broken bulb", "available": false})];
+        let all = Some((true, vec!["light.desk".to_string(), "light.ceiling".to_string()]));
+        assert_eq!(light_intent("turn on lights", &l), all);
+        assert_eq!(light_intent("urn on all the lights", &l), all);
+        assert_eq!(light_intent("Turn off the desk lamp", &l), Some((false, vec!["light.desk".to_string()])));
+        assert_eq!(light_intent("lights off please", &l).map(|x| x.0), Some(false));
+        assert_eq!(light_intent("are lights turned off", &l), None);
+        assert_eq!(light_intent("is the desk lamp on?", &l), None);
+        assert_eq!(light_intent("turn on the tv", &l), None);
+        assert_eq!(light_command("are the lights on?"), None);
+    }
+    #[test]
     fn actions() {
         let (t, a, b) = take_actions("Sure, lights off.\nACTION: light off light.desk light.ceiling");
         assert_eq!(t, "Sure, lights off.");
@@ -264,5 +370,7 @@ mod tests {
         assert!(a.is_empty() && b);
         let (t, _, _) = take_actions("It's 26 °C.\n\nSensors: Living room temperature 26.4 °C.");
         assert_eq!(t, "It's 26 °C.");
+        let (t, _, _) = take_actions("Alright, lights on.\n\n✓ All lights now on.");
+        assert_eq!(t, "Alright, lights on.");
     }
 }

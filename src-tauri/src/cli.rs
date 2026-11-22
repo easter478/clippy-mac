@@ -50,6 +50,9 @@ pub fn main(args: &[String]) -> i32 {
             if let Some((t, u)) = &prep.source {
                 eprintln!("[source: {t} {u}]");
             }
+            if let Some(d) = &prep.done {
+                eprintln!("[switched before answering: {d}]");
+            }
             let (tx, rx) = std::sync::mpsc::channel();
             let req = GenReq {
                 key: Key { path: PathBuf::from(arg(1)), n_ctx: 4096 },
@@ -74,7 +77,10 @@ pub fn main(args: &[String]) -> i32 {
             let r = rx.recv().unwrap_or(Err("engine stopped".into()));
             st.engine.unload();
             if let Ok((_, _, text)) = &r {
-                let (clean, acts, blocked) = assist::take_actions(text);
+                let (clean, mut acts, blocked) = assist::take_actions(text);
+                if prep.done.is_some() || assist::light_command(&arg(2)).is_none() {
+                    acts.clear(); // same rule as the app
+                }
                 eprintln!("\n[shown in chat: {clean}{}]", if blocked { format!(" {}", assist::BLOCKED) } else { String::new() });
                 if !acts.is_empty() {
                     eprintln!("\n[actions: {}]", rt.block_on(assist::run_actions(&st, &acts)));

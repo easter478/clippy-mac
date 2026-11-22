@@ -23,7 +23,7 @@ ID="${CLIPPY_SIGN_ID:--}"
 mkdir -p helper/build src-tauri/binaries dist
 swiftc -O -o helper/build/clippy-helper helper/main.swift
 cp helper/build/clippy-helper src-tauri/binaries/clippy-helper-aarch64-apple-darwin
-pkill -f "Clippy.app/Contents/MacOS" 2>/dev/null || true
+[[ -n "$CLIPPY_NO_KILL" ]] || pkill -f "Clippy.app/Contents/MacOS" 2>/dev/null || true  # CLIPPY_NO_KILL=1 leaves a running copy alone
 (cd src-tauri && cargo tauri build --bundles app)
 codesign --force -s "$ID" "$APP/Contents/MacOS/clippy-helper"
 codesign --force -s "$ID" "$APP"
