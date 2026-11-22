@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Clippy</title>
+<style>
+/* The buddy window is transparent and sized to fit Clippy + his bubble exactly (buddy_fit), so nothing around
+   him blocks clicks on other apps. The bubble keeps the classic tooltip cream in both light and dark mode. */
+:root { --tip-bg: #ffffe1; --tip-fg: #1d1d16; --tip-line: #8c8a5c; --tip-muted: #6b6948; --tip-btn: #fbfbe9;
+  --tip-btn-line: #8d8b63; --primary: #2d5fd1; --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace; color-scheme: light; }
+* { box-sizing: border-box; }
+html, body { margin: 0; background: transparent; overflow: hidden; font-family: var(--font); -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none; user-select: none; cursor: default; }
+#stage { position: fixed; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: flex-end; padding: 10px 8px 4px 14px; }
+.bubble { position: relative; width: 300px; margin: 0 14px 12px 0; background: var(--tip-bg); color: var(--tip-fg);
+  border: 1px solid var(--tip-line); border-radius: 13px; padding: 12px 14px; font-size: 13.5px; line-height: 1.45;
+  box-shadow: 0 10px 26px -10px rgba(0, 0, 0, .55); transform-origin: bottom right; animation: pop .2s ease-out; }
+.bubble::after { content: ""; position: absolute; right: 30px; bottom: -9px; width: 16px; height: 16px; background: var(--tip-bg);
+  border-right: 1px solid var(--tip-line); border-bottom: 1px solid var(--tip-line); transform: rotate(45deg); }
+@keyframes pop { from { transform: scale(.86); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.bubble .x { position: absolute; top: 6px; right: 6px; border: 0; background: transparent; width: 24px; height: 24px;
+  border-radius: 6px; font-size: 17px; line-height: 1; color: var(--tip-muted); cursor: pointer; }
+.bubble .x:hover { background: rgba(0, 0, 0, .07); }
+.bubble p { margin: 0 20px 0 0; overflow-wrap: anywhere; }
+.bubble b { font-weight: 650; }
+.acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.acts button, .bubble li button, .grid button { border: 1px solid var(--tip-btn-line); background: var(--tip-btn); border-radius: 7px;
+  padding: 5px 10px; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--tip-fg); cursor: pointer; }
+.acts button:hover, .bubble li button:hover, .grid button:hover { background: #fff; }
+.acts button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+.acts button:focus-visible, .bubble button:focus-visible, .bubble input:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.bubble form { display: flex; gap: 6px; margin-top: 10px; }
+.bubble input { flex: 1; min-width: 0; border: 1px solid #a8a67a; background: #fff; color: var(--tip-fg); border-radius: 7px;
+  padding: 6px 8px; font: inherit; font-size: 13px; -webkit-user-select: text; user-select: text; }
+.bubble form button.ghost { background: var(--tip-btn); color: var(--tip-fg); border: 1px solid var(--tip-btn-line); }
+.bubble li b { font-variant-numeric: tabular-nums; flex: none; }
+.bubble form button { border: 0; background: var(--primary); color: #fff; border-radius: 7px; padding: 5px 11px; font: inherit;
+  font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.bubble ul { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; max-height: 230px; overflow: auto; }
+.bubble li { display: flex; gap: 8px; align-items: center; justify-content: space-between; background: var(--tip-btn);
+  border: 1px solid #d9d7ae; border-radius: 7px; padding: 5px 8px; font-size: 12.5px; }
+.bubble li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bubble li.bad span::before { content: "●  "; color: #c0392f; }
+.bubble li.ok span::before { content: "●  "; color: #15834b; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 9px; max-height: 240px; overflow: auto; }
+.grid button { text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.grid button.on { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+.meta { display: block; margin-top: 8px; font-size: 11.5px; color: var(--tip-muted); overflow-wrap: anywhere; }
+.mono { font-family: var(--mono); font-size: 11.5px; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 9px; }
+.stats div { background: var(--tip-btn); border: 1px solid #d9d7ae; border-radius: 8px; padding: 6px 4px; text-align: center; }
+.stats b { display: block; font-size: 17px; font-variant-numeric: tabular-nums; }
+.stats span { font-size: 10.5px; color: var(--tip-muted); text-transform: uppercase; letter-spacing: .06em; }
+.thinking::after { content: "…"; animation: dots 1.2s steps(4) infinite; display: inline-block; width: 1.2em; overflow: hidden; vertical-align: bottom; }
+@keyframes dots { from { width: 0; } to { width: 1.2em; } }
+#clippy { position: relative; border: 0; background: transparent; padding: 0; margin-right: 6px; cursor: pointer;
+  filter: drop-shadow(0 7px 8px rgba(0, 0, 0, .38)); }
+#clippy:focus-visible { outline: none; }
+#clippy .clip { display: block; width: var(--cw, 70px); height: calc(var(--cw, 70px) * 1.6); animation: bob 3.4s ease-in-out infinite; }
+#clippy.hop .clip { animation: hop .6s ease-out; }
+@keyframes bob { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-4px) rotate(-2deg); } }
+@keyframes hop { 0% { transform: translateY(0); } 30% { transform: translateY(-20px) rotate(-6deg); } 60% { transform: translateY(0) rotate(3deg); }
+  80% { transform: translateY(-5px); } 100% { transform: translateY(0); } }
+.clip .eyes { transform-box: fill-box; transform-origin: center; animation: blink 5.5s infinite; }
+@keyframes blink { 0%, 94%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
+.clip .pupil { transition: transform .12s ease-out; }
+.clip .brow { transition: transform .2s; }
+body.worried .clip .brow { transform: translateY(-3px); }
+body.sleeping .clip .eyes { animation: none; transform: scaleY(.12); }
+body.sleeping #clippy .clip { animation: none; }
+.zzz { position: absolute; right: -4px; top: -14px; font-weight: 800; font-size: 16px; color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, .6);
+  opacity: 0; pointer-events: none; }
+body.sleeping .zzz { animation: zz 2.2s ease-in-out infinite; }
+@keyframes zz { 0% { transform: translate(0, 6px); opacity: 0; } 30% { opacity: 1; } 100% { transform: translate(10px, -16px); opacity: 0; } }
+body.drag #clippy { filter: drop-shadow(0 0 10px rgba(80, 160, 255, .95)); }
+body.drag #clippy .clip { transform: scale(1.08); }
+.bubble[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="bubble" id="bubble" role="status" aria-live="polite" hidden></div>
+  <button id="clippy" aria-label="Clippy. Click to chat (or open the Deck), drag to move him, right-click for options."><span class="zzz">z Z</span><span id="art"></span></button>
+</div>
+<script src="clip.js"></script>
+<script src="lines.js"></script>
+<script src="buddy.js"></script>
+</body>
+</html>

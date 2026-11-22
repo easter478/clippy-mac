@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Clippy Deck</title>
+<link rel="stylesheet" href="common.css">
+<style>
+/* The Deck: a frosted sidebar docked to the right edge of the screen (native hudWindow vibrancy behind it).
+   Collapsed, it is a slim tab with the paperclip; click it to slide the Deck back out. */
+body { display: flex; flex-direction: column; padding: 12px 10px 10px; gap: 10px; overflow: hidden; }
+.head { display: flex; align-items: center; gap: 8px; padding: 0 2px; }
+.head .logo { width: 13px; height: 20px; color: var(--fg); flex: none; display: block; }
+.head .logo svg { width: 13px; height: 20px; display: block; }
+.head { min-width: 0; }
+.head b { font-size: 14px; font-weight: 650; letter-spacing: -.01em; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.icon-btn { border: 0; background: transparent; width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; color: var(--muted); flex: none; }
+.icon-btn:hover { background: var(--surface-hover); color: var(--fg); }
+.icon-btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.mode { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line);
+  box-shadow: inset 0 1px 0 var(--rim); font-size: 11.5px; color: var(--muted); min-width: 0; }
+.mode i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }
+.mode.ok i { background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 22%, transparent); }
+.mode.down i { background: var(--bad); }
+.mode.standalone i { background: var(--accent); }
+.mode span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mode b { color: var(--fg); font-weight: 600; }
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; flex: 1; min-height: 0; align-content: start; overflow-y: auto; }
+.tile { border: 1px solid var(--line); background: var(--surface); border-radius: 13px; padding: 10px 6px 9px; display: flex; flex-direction: column;
+  align-items: center; gap: 6px; font-size: 11.5px; font-weight: 550; line-height: 1.2; text-align: center; color: var(--fg); position: relative;
+  box-shadow: inset 0 1px 0 var(--rim); transition: background .14s, transform .08s; min-height: 68px; min-width: 0; justify-content: center; }
+.tile:hover { background: var(--surface-hover); }
+.tile:active { transform: scale(.96); }
+.tile span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile svg { width: 21px; height: 21px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tile:disabled { opacity: .38; cursor: not-allowed; }
+.tile:disabled:hover { background: var(--surface); }
+.tile.busy svg { stroke: var(--accent); }
+.foot { font-size: 10.5px; color: var(--muted); display: flex; gap: 6px; align-items: center; padding: 0 2px; }
+.foot i { width: 6px; height: 6px; border-radius: 50%; background: var(--live); flex: none; }
+/* collapsed tab */
+.tab { display: none; border: 0; background: transparent; width: 100%; height: 100%; color: var(--fg); padding: 0; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+.tab svg { width: 12px; height: 19px; }
+.tab span { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .04em; }
+body.collapsed { padding: 0; }
+body.collapsed > :not(.tab) { display: none; }
+body.collapsed .tab { display: flex; }
+</style>
+</head>
+<body>
+<button class="tab" id="tab" title="Show the Deck"><span id="tab-clip"></span><span>Clippy Deck</span></button>
+<div class="head">
+  <span class="logo" id="logo"></span><b>Clippy Deck</b>
+  <button class="icon-btn" id="gear" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  <button class="icon-btn" id="fold" title="Tuck the Deck away" aria-label="Tuck the Deck away"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+</div>
+<div class="mode" id="mode"><i></i><span id="mode-text">Connecting…</span></div>
+<div class="tiles" id="tiles"></div>
+<div class="foot" id="foot"></div>
+<script src="clip.js"></script>
+<script src="deck.js"></script>
+</body>
+</html>

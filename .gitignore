@@ -1,0 +1,14 @@
+# personal setup: never published
+personal/
+NOTES.md
+
+# build output
+dist/
+helper/build/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/
+
+.DS_Store
+*.gguf
+*.part

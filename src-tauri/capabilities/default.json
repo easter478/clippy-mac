@@ -1,0 +1,22 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Clippy's windows: the app's own commands, events, window moves and the file picker",
+  "windows": [
+    "buddy",
+    "deck",
+    "settings",
+    "chat"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:event:default",
+    "dialog:allow-open",
+    "dialog:allow-ask",
+    "dialog:allow-message"
+  ]
+}

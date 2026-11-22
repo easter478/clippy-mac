@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Clippy Settings</title>
+<link rel="stylesheet" href="common.css">
+<style>
+/* Settings: native sidebar vibrancy behind the whole window; groups are translucent tints, never solid boxes. */
+body { overflow-y: auto; }
+.top { position: sticky; top: 0; z-index: 2; height: 52px; -webkit-app-region: drag; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.top .logo svg { width: 12px; height: 19px; display: block; color: var(--fg); }
+.top b { font-size: 13px; font-weight: 650; }
+main { max-width: 600px; margin: 0 auto; padding: 4px 22px 40px; display: flex; flex-direction: column; gap: 18px; }
+h2 { margin: 0 0 7px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 650; }
+.group { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: inset 0 1px 0 var(--rim); overflow: hidden; }
+.row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--line); min-height: 44px; }
+.row:first-child { border-top: 0; }
+.row .txt { flex: 1; min-width: 0; }
+.row .txt span { display: block; font-size: 13px; }
+.row .txt small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 1px; line-height: 1.35; }
+.seg { display: inline-flex; padding: 3px; border-radius: 9px; background: var(--surface-strong); border: 1px solid var(--line); flex: none; }
+.seg button { border: 0; background: transparent; padding: 5px 11px; border-radius: 7px; font-size: 12.5px; font-weight: 550; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
+input[type=text], input[type=url], input[type=number], input[type=password], select { background: var(--surface-strong); border: 1px solid var(--line); color: var(--fg);
+  border-radius: 7px; padding: 6px 8px; font: inherit; font-size: 12.5px; min-width: 0; }
+input.addr { width: 250px; font-family: var(--mono); font-size: 11.5px; }
+input[type=number] { width: 64px; }
+.btn { border: 1px solid var(--line); background: var(--surface-strong); border-radius: 7px; padding: 5px 11px; font-size: 12.5px; font-weight: 550; flex: none; }
+.btn:hover { background: var(--surface-hover); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn:disabled { opacity: .5; cursor: default; }
+.state { font-size: 11.5px; color: var(--muted); }
+.state.ok { color: var(--good); } .state.bad { color: var(--bad); } .state.warn { color: var(--warn); }
+.note { font-size: 11.5px; color: var(--muted); margin: 7px 4px 0; line-height: 1.45; }
+.note a { color: var(--accent); cursor: pointer; }
+.mono { font-family: var(--mono); font-size: 11px; }
+.bar { height: 4px; border-radius: 99px; background: var(--surface-strong); overflow: hidden; margin-top: 5px; }
+.bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+.tag { font-size: 10.5px; font-weight: 650; padding: 1px 6px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); margin-left: 6px; vertical-align: 1px; }
+.tag.gray { background: var(--surface-strong); color: var(--muted); }
+.integ .body { display: none; padding: 2px 14px 12px; border-top: 1px dashed var(--line); }
+.integ.open .body { display: grid; grid-template-columns: 150px 1fr; gap: 8px 10px; align-items: center; padding-top: 10px; }
+.integ .body label { font-size: 12px; color: var(--muted); }
+.integ .body .full { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.integ .body input[type=text], .integ .body input[type=url], .integ .body input[type=password], .integ .body select { width: 100%; }
+.integ + .integ { border-top: 1px solid var(--line); }
+.integ .head { display: flex; align-items: center; gap: 12px; padding: 10px 14px; min-height: 44px; }
+.integ .head .txt { flex: 1; min-width: 0; }
+.integ .head .txt span { display: block; font-size: 13px; }
+.integ .head .txt small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 1px; }
+.chk { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+.svc { display: flex; gap: 6px; padding: 7px 14px; border-top: 1px solid var(--line); align-items: center; }
+.svc input:first-child { width: 140px; } .svc input:nth-child(2) { flex: 1; font-family: var(--mono); font-size: 11.5px; }
+.del { border: 0; background: transparent; color: var(--muted); width: 24px; height: 24px; border-radius: 6px; font-size: 16px; }
+.del:hover { background: var(--surface-hover); color: var(--bad); }
+.saved { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); background: var(--surface-strong); border: 1px solid var(--line);
+  border-radius: 999px; padding: 5px 12px; font-size: 12px; color: var(--muted); opacity: 0; transition: opacity .2s; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+.saved.show { opacity: 1; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="top"><span class="logo" id="logo"></span><b>Clippy Settings</b></div>
+<main>
+  <section>
+    <h2>Chat · Clippy's brain</h2>
+    <div class="group">
+      <div class="row"><div class="txt"><span>Model</span><small id="model-help">Runs on this Mac. Nothing you type leaves it.</small></div><select id="model" style="max-width:240px"></select></div>
+      <div id="recs"></div>
+      <div class="row"><div class="txt"><span>Use a model file you already have</span><small>Any Qwen (or other ChatML) GGUF file on this Mac.</small></div><button class="btn" id="add-model">Add a model file…</button></div>
+      <div class="row"><div class="txt"><span>Look things up on Wikipedia</span><small>For “who is…”, “what is…” and “tell me about…” questions, Clippy reads Wikipedia first. Only that search leaves your Mac.</small></div>
+        <input type="checkbox" class="sw" id="web-lookup"></div>
+      <div class="row"><div class="txt"><span>Chat memory</span><small>How much of the conversation Clippy remembers. More uses more memory.</small></div>
+        <select id="ctx"><option value="4096">Short (4K)</option><option value="8192">Normal (8K)</option><option value="16384">Long (16K)</option><option value="32768">Very long (32K)</option></select></div>
+      <div class="row"><div class="txt"><span>Free the memory after</span><small id="eng-state" class="state"></small></div>
+        <select id="unload"><option value="2">2 min idle</option><option value="10">10 min idle</option><option value="30">30 min idle</option><option value="0">Never</option></select><button class="btn" id="unload-now">Free now</button></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Personality</h2>
+    <div class="group">
+      <div class="row"><div class="txt"><span>How Clippy talks</span><small id="persona-help"></small></div>
+        <div class="seg" role="group" aria-label="Personality"><button id="p-normal">Nice</button><button id="p-sarcastic">Rude</button></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Clippy and the Deck</h2>
+    <div class="group">
+      <div class="row"><div class="txt"><span>Show the Deck</span><small id="deck-help"></small></div>
+        <div class="seg" role="group" aria-label="Deck"><button id="d-always">Always</button><button id="d-click">When I click Clippy</button><button id="d-never">Never</button></div></div>
+      <div class="row"><div class="txt"><span>Show Clippy</span></div><input type="checkbox" class="sw" id="buddy"></div>
+      <div class="row"><div class="txt"><span>Clippy's size</span></div><select id="size"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></div>
+      <div class="row"><div class="txt"><span>Nap when the Mac is idle for</span><small>Messages wait and come as a summary when you're back.</small></div><input type="number" id="sleep_minutes" min="1" max="120"><span class="state">min</span></div>
+      <div class="row"><div class="txt"><span>Stop after two “Not now”s</span><small>Per kind of message. Turn the kind back on below.</small></div><input type="checkbox" class="sw" id="quiet_two"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Clippy tells you about</h2>
+    <div class="group">
+      <div class="row"><div class="txt"><span>Homelab problems</span><small>Proxmox, Docker, service checks and the Lian Li screen's alerts.</small></div><input type="checkbox" class="sw" data-kind="homelab"></div>
+      <div class="row"><div class="txt"><span>Finished downloads</span><small>qBittorrent, Radarr/Sonarr imports and watched custom actions.</small></div><input type="checkbox" class="sw" data-kind="downloads"></div>
+      <div class="row"><div class="txt"><span>New on Jellyfin</span></div><input type="checkbox" class="sw" data-kind="media"></div>
+      <div class="row"><div class="txt"><span>Big stock moves</span></div><input type="checkbox" class="sw" data-kind="stocks"></div>
+      <div class="row"><div class="txt"><span>Windows → Mac tips</span><small id="keys-help">When you press a Windows shortcut such as Ctrl+C. Terminals and remote desktops are skipped.</small></div><button class="btn" id="keys-allow" hidden>Allow…</button><input type="checkbox" class="sw" data-kind="tips"></div>
+      <div class="row"><div class="txt"><span>Mac health</span><small>When the disk is over 90% full (at most once a day).</small></div><input type="checkbox" class="sw" data-kind="health"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Integrations</h2>
+    <div class="group" id="integs"></div>
+    <p class="note">All optional. Tokens and passwords are kept in the macOS Keychain, never in a file. Clippy only reads, except the buttons you click (lights, start/restart, pause ads).</p>
+  </section>
+
+  <section>
+    <h2>Homelab checks</h2>
+    <div class="group">
+      <div class="row"><div class="txt"><span>Check these addresses every minute</span><small>Any web address. Clippy tells you when one stops answering.</small></div><input type="checkbox" class="sw" id="checks_on"></div>
+      <div id="svcs"></div>
+    </div>
+    <p class="note"><button class="btn" id="svc-add">Add an address</button></p>
+  </section>
+
+  <section>
+    <h2>Custom actions</h2>
+    <div class="group">
+      <div class="row"><div class="txt"><span id="cust-title">Your own Deck tiles</span><small id="cust-help">Call any service on your network: upload a file, send a link, trigger a webhook. Described in a JSON file.</small></div></div>
+      <div id="cust-list"></div>
+      <div class="row"><button class="btn" id="cust-import">Import a file…</button><button class="btn" id="cust-reload">Reload</button><button class="btn" id="cust-reveal">Show in Finder</button><button class="btn" id="cust-example">Create an example</button></div>
+    </div>
+    <p class="note">The file is <span class="mono" id="cust-path"></span>. Secrets in it are written as <span class="mono">{{secret:NAME}}</span> and set here, so the file itself never holds a password.</p>
+  </section>
+</main>
+<div class="saved" id="saved">Saved</div>
+<script src="clip.js"></script>
+<script src="lines.js"></script>
+<script src="settings.js"></script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+{
+  "actions": [
+    {
+      "name": "Notify my phone",
+      "icon": "send",
+      "input": "text",
+      "prompt": "What should I send to your phone?",
+      "placeholder": "Dinner's ready!",
+      "method": "POST",
+      "url": "https://ntfy.sh/{{secret:ntfy-topic}}",
+      "headers": { "Title": "From Clippy" },
+      "body": "{{input}}",
+      "result": "Sent to your phone."
+    },
+    {
+      "name": "Upload a file",
+      "icon": "upload",
+      "input": "file",
+      "drop": true,
+      "prompt": "Drag a file onto me, or choose one:",
+      "method": "PUT",
+      "url": "http://192.168.1.10:8080/upload?name={{file.name}}",
+      "headers": { "Authorization": "Bearer {{secret:upload-token}}" },
+      "body": "{{file}}",
+      "result": "Uploaded {{file.name}}.",
+      "copy": "http://192.168.1.10:8080/files/{{response.id}}",
+      "open": "http://192.168.1.10:8080/"
+    },
+    {
+      "name": "Movie night",
+      "icon": "home",
+      "input": "none",
+      "method": "POST",
+      "url": "http://homeassistant.local:8123/api/webhook/{{secret:movie-night-webhook}}",
+      "result": "Movie night is on."
+    },
+    {
+      "name": "Download a link",
+      "icon": "play",
+      "input": "url",
+      "prompt": "Which link should I download?",
+      "method": "POST",
+      "url": "http://192.168.1.10:8000/api/jobs",
+      "headers": { "Content-Type": "application/json" },
+      "body": "{\"url\": \"{{input}}\"}",
+      "result": "Downloading. I'll tell you when it's done.",
+      "watch": {
+        "url": "http://192.168.1.10:8000/api/jobs",
+        "list": "jobs", "id": "id", "ids": "response.ids", "status": "status", "title": "title",
+        "done": ["done"], "failed": ["failed", "cancelled"], "every": 15
+      }
+    }
+  ]
+}
